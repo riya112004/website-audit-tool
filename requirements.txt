@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+playwright
+aiosqlite
+jinja2
+python-multipart
+beautifulsoup4
+httpx

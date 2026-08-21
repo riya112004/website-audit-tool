@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Audit Crawler</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="header">
+    <h1>Site Audit Crawler</h1>
+  </div>
+  <div class="container">
+
+    <!-- NEW SCAN FORM -->
+    <div class="card">
+      <h2>New Website Scan</h2>
+      <form method="POST" action="/scan" class="scan-form">
+        <input type="url" name="url" placeholder="https://example.com" required autofocus />
+        <div class="form-row">
+          <label>Max Pages
+            <input type="number" name="max_pages" value="50" min="1" max="200" />
+          </label>
+          <label>Max Depth
+            <input type="number" name="max_depth" value="3" min="1" max="5" />
+          </label>
+          <button type="submit">Start Scan</button>
+        </div>
+        <p class="form-hint">Crawl completes in ~60 seconds. Sitemap.xml will be checked automatically.</p>
+      </form>
+    </div>
+
+    <!-- RECENT SCANS -->
+    <div class="card">
+      <h2>Recent Scans</h2>
+      {% if scans %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Status</th>
+            <th>Website</th>
+            <th>Pages</th>
+            <th>Elements</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for scan in scans %}
+          <tr>
+            <td class="dim">{{ scan.id }}</td>
+            <td><span class="badge badge-{{ scan.status }}">{{ scan.status }}</span></td>
+            <td class="url-cell">{{ scan.start_url }}</td>
+            <td>{{ scan.pages_crawled or 0 }}</td>
+            <td>{{ scan.elements_found or 0 }}</td>
+            <td><a href="/scans/{{ scan.id }}" class="btn-sm">View Results</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty">No scans yet. Enter a URL above to start.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</body>
+</html>

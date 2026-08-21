@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan #{{ scan.id }} — {{ scan.start_url }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="header">
+    <h1><a href="/">Site Audit Crawler</a> / Scan #{{ scan.id }}</h1>
+  </div>
+  <div class="container">
+
+    <!-- STATUS BOX -->
+    <div class="card status-card">
+      <div class="status-row">
+        <div class="status-big">
+          {% if scan.status == "completed" %}
+          <span class="status-icon status-ok">&#10003;</span>
+          {% elif scan.status == "running" %}
+          <span class="status-icon status-run">&#9657;</span>
+          {% else %}
+          <span class="status-icon status-err">&#10007;</span>
+          {% endif %}
+          <span class="status-label">{{ scan.status|upper }}</span>
+        </div>
+        <div class="status-url">{{ scan.start_url }}</div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat">
+          <div class="stat-num" id="stat-pages">{{ scan.pages_crawled or 0 }}</div>
+          <div class="stat-label">Pages Crawled</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" id="stat-elements">{{ scan.elements_found or 0 }}</div>
+          <div class="stat-label">Elements Found</div>
+        </div>
+        {% if seo_summary %}
+        <div class="stat">
+          <div class="stat-num stat-critical">{{ seo_summary.get('critical', 0) }}</div>
+          <div class="stat-label">SEO Critical</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num stat-warning">{{ seo_summary.get('warning', 0) }}</div>
+          <div class="stat-label">SEO Warnings</div>
+        </div>
+        {% endif %}
+        {% if scan.status == "completed" %}
+        <div class="stat stat-score-overall">
+          <div class="stat-num stat-overall">{{ scan.overall_score or 0 }}</div>
+          <div class="stat-label">Overall Score</div>
+        </div>
+        <div class="stat stat-score-ui">
+          <div class="stat-num stat-ui">{{ scan.ui_score or 0 }}</div>
+          <div class="stat-label">UI Score</div>
+        </div>
+        <div class="stat stat-score-ux">
+          <div class="stat-num stat-ux">{{ scan.ux_score or 0 }}</div>
+          <div class="stat-label">UX Score</div>
+        </div>
+        <div class="stat stat-score-seo">
+          <div class="stat-num stat-seo">{{ scan.seo_score or 0 }}</div>
+          <div class="stat-label">SEO Score</div>
+        </div>
+        {% endif %}
+      </div>
+      {% if scan.error and scan.status != 'completed' %}
+      <div class="error-box">
+        <strong>Errors:</strong>
+        <pre>{{ scan.error }}</pre>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- LIVE PROGRESS (only during running) -->
+    {% if scan.status == "running" %}
+    <div class="card live-card">
+      <div class="live-header">
+        <h2>Live Crawl Progress</h2>
+        <button class="btn-live" id="btn-live" onclick="toggleLive()">View Live Progress</button>
+      </div>
+      <div id="live-section" style="display:none;">
+        <div class="live-spinner">
+          <span class="spinner"></span>
+          <span>Crawling in progress...</span>
+        </div>
+        <div class="stats-grid live-stats">
+          <div class="stat">
+            <div class="stat-num" id="live-pages">0</div>
+            <div class="stat-label">Pages Found</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num" id="live-elements">0</div>
+            <div class="stat-label">Elements</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num" id="live-findings">0</div>
+            <div class="stat-label">Findings</div>
+          </div>
+        </div>
+        <div id="live-pages-list" class="live-pages-list"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- OVERALL SCORE (after completed) -->
+    {% if scan.status == "completed" and overall_score_data %}
+    <div class="card overall-score-card">
+      <h2>Overall Audit Score</h2>
+      <div class="overall-score-row">
+        <div class="overall-score-circle">
+          <span class="overall-score-num">{{ overall_score_data.overall_score }}</span>
+          <span class="overall-score-grade">{{ overall_score_data.grade }}</span>
+        </div>
+        <div class="overall-breakdown">
+          <div class="breakdown-row">
+            <span class="breakdown-label">UI Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-ui" style="width:{{ ui_score_data.ui_score }}%"></div></div>
+            <span class="breakdown-val">{{ ui_score_data.ui_score }}</span>
+            <span class="breakdown-grade">{{ ui_score_data.grade }}</span>
+          </div>
+          <div class="breakdown-row">
+            <span class="breakdown-label">UX Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-ux" style="width:{{ ux_score_data.ux_score }}%"></div></div>
+            <span class="breakdown-val">{{ ux_score_data.ux_score }}</span>
+            <span class="breakdown-grade">{{ ux_score_data.grade }}</span>
+          </div>
+          <div class="breakdown-row">
+            <span class="breakdown-label">SEO Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-seo" style="width:{{ seo_score_data.seo_score }}%"></div></div>
+            <span class="breakdown-val">{{ seo_score_data.seo_score }}</span>
+            <span class="breakdown-grade">{{ seo_score_data.grade }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- UI SCORE BREAKDOWN -->
+    {% if scan.status == "completed" and ui_score_data and ui_score_data.category_scores %}
+    <div class="card ui-score-card">
+      <h2>UI Score Breakdown</h2>
+      <div class="ux-score-bar-container">
+        <div class="ux-score-bar bar-ui-bg" style="width:{{ ui_score_data.ui_score }}%"></div>
+        <span class="ux-score-text">{{ ui_score_data.ui_score }}/100</span>
+      </div>
+      <div class="ux-category-scores">
+        {% for cat, score in ui_score_data.category_scores.items() %}
+        <div class="ux-cat-row">
+          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
+          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-ui" style="width:{{ score }}%"></div></div>
+          <span class="ux-cat-score">{{ score }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- UX SCORE BREAKDOWN -->
+    {% if scan.status == "completed" and ux_score_data and ux_score_data.category_scores %}
+    <div class="card ux-score-card">
+      <h2>UX Score Breakdown</h2>
+      <div class="ux-score-bar-container">
+        <div class="ux-score-bar bar-ux-bg" style="width:{{ ux_score_data.ux_score }}%"></div>
+        <span class="ux-score-text">{{ ux_score_data.ux_score }}/100</span>
+      </div>
+      <div class="ux-category-scores">
+        {% for cat, score in ux_score_data.category_scores.items() %}
+        <div class="ux-cat-row">
+          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
+          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-ux" style="width:{{ score }}%"></div></div>
+          <span class="ux-cat-score">{{ score }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- SEO SCORE BREAKDOWN -->
+    {% if scan.status == "completed" and seo_score_data and seo_score_data.category_scores %}
+    <div class="card seo-score-card">
+      <h2>SEO Score Breakdown</h2>
+      <div class="ux-score-bar-container">
+        <div class="ux-score-bar bar-seo-bg" style="width:{{ seo_score_data.seo_score }}%"></div>
+        <span class="ux-score-text">{{ seo_score_data.seo_score }}/100</span>
+      </div>
+      <div class="ux-category-scores">
+        {% for cat, score in seo_score_data.category_scores.items() %}
+        <div class="ux-cat-row">
+          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
+          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-seo" style="width:{{ score }}%"></div></div>
+          <span class="ux-cat-score">{{ score }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- UI FINDINGS -->
+    {% if ui_findings and scan.status == "completed" %}
+    <div class="card ui-findings-card">
+      <h2>UI Audit Findings ({{ ui_findings|length }})</h2>
+      {% for check_name, group in ui_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message }}</td>
+                <td>{{ issue.message.split(':')[0].strip() if ':' in issue.message else '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- UX FINDINGS -->
+    {% if ux_findings and scan.status == "completed" %}
+    <div class="card ux-findings-card">
+      <h2>UX Audit Findings ({{ ux_findings|length }})</h2>
+      {% for check_name, group in ux_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message }}</td>
+                <td>{{ issue.message.split(':')[0].strip() if ':' in issue.message else '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ACCESSIBILITY FINDINGS -->
+    {% if a11y_findings and scan.status == "completed" %}
+    <div class="card a11y-findings-card">
+      <h2>Accessibility Findings ({{ a11y_findings|length }})</h2>
+      {% for check_name, group in a11y_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message }}</td>
+                <td>{{ issue.message.split(':')[0].strip() if ':' in issue.message else '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- SEO FINDINGS (existing) -->
+    {% if seo_findings and scan.status == "completed" %}
+    <div class="card">
+      <h2>SEO Audit Results</h2>
+      {% for check_name, group in seo_grouped.items() %}
+      {% set is_counted = check_name in ['heading_order_broken', 'non_descriptive_link_text'] %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          {% if is_counted and group.total_violations > 0 %}
+          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }} &middot; {{ group.total_violations }} total</span>
+          {% else %}
+          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }}</span>
+          {% endif %}
+        </summary>
+        <div class="finding-body">
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% if is_counted and group.total_violations > 0 %}
+          <div class="finding-summary">
+            <span class="finding-pages-count">{{ group.issues|length }} affected page{{ 's' if group.issues|length != 1 }}</span>
+            <span class="finding-violations-count">{{ group.total_violations }} total violation{{ 's' if group.total_violations != 1 }}</span>
+          </div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message }}</td>
+                <td>{{ issue.message.split(':')[0].strip() if ':' in issue.message else '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% elif scan.status == "completed" %}
+    <div class="card"><h2>SEO Audit Results</h2><p class="empty">No SEO issues found.</p></div>
+    {% endif %}
+
+    <!-- CRAWLED PAGES -->
+    {% if scan.status == "completed" %}
+    <div class="card">
+      <h2>Crawled Pages ({{ pages|length }})</h2>
+      {% if pages %}
+      <table>
+        <thead><tr><th>#</th><th>Status</th><th>Title</th><th>URL</th><th>Elements</th></tr></thead>
+        <tbody>
+          {% for page in pages %}
+          <tr>
+            <td class="dim">{{ loop.index }}</td>
+            <td>
+              <span class="badge badge-small badge-{{ 'ok' if page.status_code and page.status_code < 400 else 'err' }}">
+                {{ page.status_code or 'ERR' }}
+              </span>
+            </td>
+            <td class="page-title-cell">{{ page.title or '(no title)' }}</td>
+            <td class="url-cell">{{ page.url }}</td>
+            <td>{{ page_details[page.id].elements|length }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="empty">No pages crawled yet.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+
+  {% if scan.status == "running" %}
+  <script>
+    let liveOpen = false;
+    function toggleLive() {
+      const sec = document.getElementById('live-section');
+      const btn = document.getElementById('btn-live');
+      liveOpen = !liveOpen;
+      sec.style.display = liveOpen ? 'block' : 'none';
+      btn.textContent = liveOpen ? 'Hide Progress' : 'View Live Progress';
+      if (liveOpen) fetchProgress();
+    }
+    async function fetchProgress() {
+      if (!liveOpen) return;
+      try {
+        const resp = await fetch('/api/scan/{{ scan.id }}/progress');
+        const data = await resp.json();
+        document.getElementById('live-pages').textContent = data.pages_crawled;
+        document.getElementById('live-elements').textContent = data.elements_found;
+        document.getElementById('live-findings').textContent = data.findings_count;
+        const list = document.getElementById('live-pages-list');
+        if (data.pages.length > 0) {
+          let html = '<table><thead><tr><th>#</th><th>Status</th><th>Title</th><th>URL</th><th>Elements</th></tr></thead><tbody>';
+          data.pages.forEach(function(p, i) {
+            const cls = p.status_code && p.status_code < 400 ? 'ok' : 'err';
+            html += '<tr><td class="dim">' + (i+1) + '</td><td><span class="badge badge-small badge-' + cls + '">' + (p.status_code || 'ERR') + '</span></td><td class="page-title-cell">' + (p.title || '(no title)') + '</td><td class="url-cell">' + p.url + '</td><td>' + p.elements_count + '</td></tr>';
+          });
+          html += '</tbody></table>';
+          list.innerHTML = html;
+        } else {
+          list.innerHTML = '<p class="empty">Starting crawl...</p>';
+        }
+        if (data.status === 'completed' || data.status === 'failed') {
+          setTimeout(function() { location.reload(); }, 500);
+          return;
+        }
+      } catch(e) {}
+      setTimeout(fetchProgress, 3000);
+    }
+  </script>
+  {% endif %}
+
+</body>
+</html>
