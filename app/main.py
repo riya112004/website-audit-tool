@@ -183,14 +183,16 @@ async def scan_detail(request: Request, scan_id: int):
             a11y_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
         a11y_grouped[name]["issues"].append(f)
 
-    from analyzers.scoring import compute_ui_score, compute_ux_score, compute_seo_score, compute_overall_score
+    from analyzers.scoring import compute_ui_score, compute_ux_score, compute_seo_score, _grade
     ui_score_data = compute_ui_score(ui_findings)
     all_ux = ux_findings + a11y_findings
     ux_score_data = compute_ux_score(all_ux)
     seo_score_data = compute_seo_score(seo_findings)
-    overall_score_data = compute_overall_score(
-        ui_score_data["ui_score"], ux_score_data["ux_score"], seo_score_data["seo_score"]
-    )
+    # Use DB scores as source of truth (computed by run_analyzers single pipeline)
+    overall_score_data = {
+        "overall_score": scan.get("overall_score", 0),
+        "grade": _grade(scan.get("overall_score", 0)),
+    }
 
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,

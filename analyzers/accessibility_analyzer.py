@@ -123,33 +123,38 @@ def _contrast_ratio(rgb1, rgb2) -> float:
 # ---------------------------------------------------------------------------
 
 def _check_missing_landmarks(findings, scan_id, page, soup):
-    has_main = bool(soup.find("main") or soup.find(attrs={"role": "main"}))
-    has_nav = bool(soup.find("nav") or soup.find(attrs={"role": "navigation"}))
-    has_header = bool(soup.find("header") or soup.find(attrs={"role": "banner"}))
-    has_footer = bool(soup.find("footer") or soup.find(attrs={"role": "contentinfo"}))
+    """Check semantic structure, not blind landmark requirements.
+    
+    Only flag if page has NO semantic structure at all (pure div soup).
+    Missing 1-2 landmarks is fine if the page uses other semantic elements.
+    """
+    # Landmark elements and their ARIA equivalents
+    landmarks = {
+        "main": soup.find("main") or soup.find(attrs={"role": "main"}),
+        "nav": soup.find("nav") or soup.find(attrs={"role": "navigation"}),
+        "header": soup.find("header") or soup.find(attrs={"role": "banner"}),
+        "footer": soup.find("footer") or soup.find(attrs={"role": "contentinfo"}),
+    }
 
-    missing = []
-    if not has_main:
-        missing.append("main")
-    if not has_nav:
-        missing.append("nav")
-    if not has_header:
-        missing.append("header")
-    if not has_footer:
-        missing.append("footer")
+    # Count semantic structure (not just landmarks)
+    semantic_elements = soup.find_all(["main", "nav", "header", "footer", "section", "article", "aside", "figure"])
+    semantic_count = len(semantic_elements)
 
-    if len(missing) >= 3:
-        _add_finding(findings, scan_id, "missing_landmarks", "high",
-                     f"Missing Landmarks ({', '.join(missing)}): {page['url']}",
-                     page["url"], page["id"],
-                     f"Page missing semantic landmarks: {', '.join(missing)}",
-                     "Add semantic HTML5 landmark elements (<main>, <nav>, <header>, <footer>) to define page structure")
-    elif missing:
-        _add_finding(findings, scan_id, "missing_landmarks", "info",
-                     f"Missing Landmarks ({', '.join(missing)}): {page['url']}",
-                     page["url"], page["id"],
-                     f"Page missing semantic landmarks: {', '.join(missing)}",
-                     "Add missing landmark elements to improve screen reader navigation")
+    # ARIA roles on divs also count as semantic structure
+    aria_roles = soup.find_all(attrs={"role": True})
+    aria_count = sum(1 for el in aria_roles if el.name == "div")
+
+    total_structure = semantic_count + aria_count
+
+    # Only flag if page has essentially no semantic structure
+    if total_structure < 3:
+        missing = [name for name, found in landmarks.items() if not found]
+        if missing:
+            _add_finding(findings, scan_id, "missing_landmarks", "medium",
+                         f"No Semantic Structure ({total_structure} semantic elements, missing {', '.join(missing)}): {page['url']}",
+                         page["url"], page["id"],
+                         f"Page has {total_structure} semantic elements — lacks basic structure for screen readers",
+                         "Add semantic HTML5 elements (<main>, <nav>, <section>, <article>) to define page structure")
 
 
 def _check_div_soup(findings, scan_id, page, soup):
@@ -190,34 +195,30 @@ def _check_heading_hierarchy_skip(findings, scan_id, page, soup):
         return
 
     prev_level = 0
-    skip_found = False
-    skip_from = 0
-    skip_to = 0
+    skips = []
 
     for h in headings:
         level = int(h.name[1])
         if prev_level > 0 and level > prev_level + 1:
-            skip_found = True
-            skip_from = prev_level
-            skip_to = level
-            break
+            skips.append((prev_level, level))
         prev_level = level
 
-    if skip_found:
-        _add_finding(findings, scan_id, "heading_hierarchy_skip", "high",
-                     f"Heading Hierarchy Skip (h{skip_from} -> h{skip_to}): {page['url']}",
+    if skips:
+        skip_details = ", ".join("h%d->h%d" % (f, t) for f, t in skips)
+        _add_finding(findings, scan_id, "heading_hierarchy_skip", "medium",
+                     f"Heading Hierarchy Skips ({len(skips)} violations): {page['url']}",
                      page["url"], page["id"],
-                     f"Heading levels skip from h{skip_from} to h{skip_to}",
-                     "Use sequential heading levels without skipping (h1 -> h2 -> h3, not h1 -> h3)")
+                     f"{len(skips)} heading level skip(s): {skip_details}",
+                     "Use sequential heading levels without skipping (h1 → h2 → h3)")
 
 
 def _check_multiple_h1(findings, scan_id, page, soup):
     h1_tags = soup.find_all("h1")
     if len(h1_tags) > 1:
-        _add_finding(findings, scan_id, "multiple_h1", "high",
+        _add_finding(findings, scan_id, "multiple_h1", "low",
                      f"Multiple H1 Tags ({len(h1_tags)} h1 elements): {page['url']}",
                      page["url"], page["id"],
-                     f"Page contains {len(h1_tags)} <h1> elements",
+                     f"Page contains {len(h1_tags)} <h1> elements — SEO warning, not accessibility critical",
                      "Use exactly one <h1> per page for the main page heading")
 
 
@@ -324,6 +325,11 @@ def _check_missing_form_error_role(findings, scan_id, page, soup):
 # ---------------------------------------------------------------------------
 
 def _check_image_missing_alt(findings, scan_id, page, soup):
+    """Check for missing alt attributes.
+    
+    alt="" is valid for decorative images — don't flag those.
+    Only flag images with NO alt attribute at all.
+    """
     images = soup.find_all("img")
     if not images:
         return
@@ -338,28 +344,43 @@ def _check_image_missing_alt(findings, scan_id, page, soup):
         _add_finding(findings, scan_id, "image_missing_alt", severity,
                      f"Image Missing Alt ({missing}/{len(images)} images): {page['url']}",
                      page["url"], page["id"],
-                     f"{missing} out of {len(images)} images are missing the alt attribute",
-                     "Add alt attribute to all <img> elements; use alt=\"\" for decorative images")
+                     f"{missing} out of {len(images)} images are missing the alt attribute entirely",
+                     'Add alt attribute to all <img> elements; use alt="" for decorative images')
 
 
 def _check_image_empty_alt_with_link(findings, scan_id, page, soup):
-    linked_images = []
+    """Check linked images with alt="" — check link's accessible name, not just img alt.
+    
+    A linked image with alt="" is only an issue if the <a> tag has no other
+    accessible name (text, aria-label, title).
+    """
+    inaccessible_links = 0
     for a in soup.find_all("a"):
-        for img in a.find_all("img"):
-            linked_images.append(img)
+        imgs = a.find_all("img")
+        if not imgs:
+            continue
 
-    empty_linked = 0
-    for img in linked_images:
-        alt = img.get("alt")
-        if alt is not None and alt.strip() == "":
-            empty_linked += 1
+        # Check if any linked image has alt=""
+        has_empty_alt = any(img.get("alt", None) == "" for img in imgs)
+        if not has_empty_alt:
+            continue
 
-    if empty_linked > 0:
+        # Check if the <a> itself has an accessible name
+        link_text = a.get_text(strip=True)
+        aria_label = a.get("aria-label", "")
+        aria_labelledby = a.get("aria-labelledby", "")
+        title = a.get("title", "")
+        has_accessible_name = bool(link_text or aria_label or aria_labelledby or title)
+
+        if not has_accessible_name:
+            inaccessible_links += 1
+
+    if inaccessible_links > 0:
         _add_finding(findings, scan_id, "image_empty_alt_with_link", "high",
-                     f"Image Empty Alt With Link ({empty_linked} linked images with alt=\"\"): {page['url']}",
+                     f"Linked Image With No Accessible Name ({inaccessible_links} links): {page['url']}",
                      page["url"], page["id"],
-                     f"{empty_linked} images inside links have alt=\"\" making the link inaccessible",
-                     "Provide descriptive alt text for images inside links, or add aria-label to the link")
+                     f"{inaccessible_links} image links have alt=\"\" with no accessible name on the <a> tag",
+                     'Add text content, aria-label, or title to the <a> tag wrapping the image')
 
 
 # ---------------------------------------------------------------------------
@@ -441,38 +462,47 @@ def _check_aria_hidden_focusable(findings, scan_id, page, soup):
 
 
 def _check_missing_role_attributes(findings, scan_id, page, soup):
-    INTERACTIVE_PATTERNS = re.compile(
-        r"(?:onclick|onkeydown|onkeypress|onkeyup|onmousedown|onmouseup)", re.I
-    )
+    """Check for missing role attributes on custom interactive elements only.
+    
+    Native elements (<button>, <a>, <input>) have implicit roles — no need.
+    Only checks: div, span, p, li, td, th with click handlers or interactive classes.
+    """
+    CLICK_HANDLER_ATTRS = {
+        "onclick", "onkeydown", "onkeypress", "onkeyup",
+        "onmousedown", "onmouseup",
+        "ng-click", "v-on:click", "@click", "v-on:click.prevent",
+    }
+    INTERACTIVE_CLASSES = {"btn", "button", "clickable", "link", "nav-link", "tab"}
 
     missing_role_count = 0
-    checked_elements = []
 
-    for tag in soup.find_all(["div", "span", "p", "li", "td", "th", "label", "img", "svg"]):
-        onclick = tag.get("onclick", "")
+    for tag in soup.find_all(["div", "span", "p", "li", "td", "th"]):
+        # Check for click handler attributes
+        has_click_handler = any(tag.get(attr) for attr in CLICK_HANDLER_ATTRS)
+
+        # Check for interactive class patterns
         classes = " ".join(tag.get("class", [])).lower()
-        style = tag.get("style", "").lower()
+        has_click_class = any(kw in classes for kw in INTERACTIVE_CLASSES)
 
-        has_click_handler = bool(onclick and onclick.strip())
-        has_click_class = any(kw in classes for kw in ("btn", "button", "clickable", "link", "nav-link", "tab"))
-        has_click_cursor = "cursor:pointer" in style.replace(" ", "")
+        # Check for role="button/link/tab" in class (Bootstrap pattern)
+        has_role_class = any(f"role-{kw}" in classes for kw in ("button", "link", "tab", "menuitem"))
 
-        if not has_click_handler and not has_click_class and not has_click_cursor:
+        if not has_click_handler and not has_click_class:
             continue
 
         has_role = bool(tag.get("role"))
         has_tabindex = tag.has_attr("tabindex")
         has_aria_label = bool(tag.get("aria-label") or tag.get("aria-labelledby"))
 
-        if not has_role and (has_click_handler or has_click_class):
+        if not has_role and not has_role_class:
             missing_role_count += 1
 
     if missing_role_count > 0:
-        _add_finding(findings, scan_id, "missing_role_attributes", "high",
-                     f"Missing Role Attributes ({missing_role_count} interactive elements): {page['url']}",
+        _add_finding(findings, scan_id, "missing_role_attributes", "medium",
+                     f"Missing Role Attributes ({missing_role_count} custom elements): {page['url']}",
                      page["url"], page["id"],
-                     f"{missing_role_count} custom elements used as interactive controls without role attribute",
-                     "Add appropriate role attributes (role=\"button\", role=\"link\") and tabindex=\"0\" to custom interactive elements")
+                     f"{missing_role_count} custom interactive elements (div/span) without role attribute",
+                     'Add role="button" or role="link" and tabindex="0" to custom interactive elements')
 
 
 # ---------------------------------------------------------------------------

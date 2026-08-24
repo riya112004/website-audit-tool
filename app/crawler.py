@@ -36,8 +36,8 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
                    ".mov", ".wmv", ".flv", ".jpg", ".jpeg", ".png", ".gif",
                    ".svg", ".ico", ".css", ".js", ".xml", ".json", ".txt"}
 
-CRAWL_TIMEOUT = 300
-PAGE_GOTO_TIMEOUT = 20000
+CRAWL_TIMEOUT = 600
+PAGE_GOTO_TIMEOUT = 25000
 MAX_CONCURRENT = 5
 
 
@@ -47,11 +47,15 @@ def normalize_url(url: str) -> str:
     parsed = urlparse(url)
     scheme = parsed.scheme or "https"
     netloc = parsed.netloc.lower().rstrip(".")
+    # Strip www. prefix for consistent dedup
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
     path = parsed.path.rstrip("/") or "/"
     qs = parse_qs(parsed.query, keep_blank_values=False)
     for param in TRACKING_PARAMS:
         qs.pop(param, None)
     sorted_qs = urlencode(sorted(qs.items()), doseq=True)
+    # Strip fragment (#) — same page, different anchor
     return urlunparse((scheme, netloc, path, "", sorted_qs, ""))
 
 
@@ -143,6 +147,31 @@ async def _crawl_one_page(
     resp_headers = dict(resp.headers) if resp else {}
     title = await pg.title()
 
+    # Core Web Vitals: inject PerformanceObserver before full load
+    await pg.evaluate("""() => {
+        window.__cwv = { lcp: 0, cls: 0, inp: 0, lcp_entries: [], cls_entries: [] };
+        try {
+            new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (entry.startTime > window.__cwv.lcp) {
+                        window.__cwv.lcp = Math.round(entry.startTime);
+                        window.__cwv.lcp_entries.push({ element: entry.element?.tagName || 'unknown', size: entry.size, url: entry.url || '' });
+                    }
+                }
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+        } catch(e) {}
+        try {
+            new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (!entry.hadRecentInput) {
+                        window.__cwv.cls += entry.value;
+                        window.__cwv.cls_entries.push({ value: Math.round(entry.value * 1000) / 1000, element: entry.element?.tagName || 'unknown' });
+                    }
+                }
+            }).observe({ type: 'layout-shift', buffered: true });
+        } catch(e) {}
+    }""")
+
     raw_html = await pg.content()
     html_dir = os.path.join(DATA_DIR, "html", f"scan{scan_id}")
     os.makedirs(html_dir, exist_ok=True)
@@ -154,7 +183,7 @@ async def _crawl_one_page(
     os.makedirs(screenshot_dir, exist_ok=True)
     screenshot_path = os.path.join(screenshot_dir, f"page_{page_no}.png")
     try:
-        await pg.screenshot(path=screenshot_path, full_page=True)
+        await pg.screenshot(path=screenshot_path, full_page=False)
     except Exception:
         screenshot_path = None
 
@@ -193,6 +222,17 @@ async def _crawl_one_page(
         pass
     canonical_norm = normalize_url(canonical) if canonical else normalize_url(url)
 
+    # Read Core Web Vitals after page settle
+    cwv = await pg.evaluate("""() => {
+        const w = window.__cwv || {};
+        return {
+            lcp: w.lcp || 0,
+            cls: Math.round((w.cls || 0) * 1000) / 1000,
+            lcp_entries: w.lcp_entries || [],
+            cls_entries: w.cls_entries || [],
+        };
+    }""")
+
     for href in all_links:
         db.insert_edge(page_obj["id"], href, None)
 
@@ -206,7 +246,7 @@ async def _crawl_one_page(
         "status_code": status_code,
         "error": None,
         "console_errors": console_errors,
-        "dom_size": len(await pg.query_selector_all("*")),
+        "dom_size": await pg.evaluate("() => document.querySelectorAll('*').length"),
         "viewport": {"width": 1280, "height": 720},
         "screenshot_path": screenshot_path,
         "word_count": await pg.evaluate("() => document.body ? document.body.innerText.split(/\\s+/).filter(w => w.length > 0).length : 0"),
@@ -219,6 +259,101 @@ async def _crawl_one_page(
         "meta_description": await pg.evaluate("() => { const m = document.querySelector('meta[name=description]'); return m ? m.content : ''; }"),
         "viewport_meta": await pg.evaluate("() => !!document.querySelector('meta[name=viewport]')"),
         "lang_attr": await pg.evaluate("() => document.documentElement.lang || ''"),
+        "core_web_vitals": cwv,
+        "rendered_styles": await pg.evaluate("""() => {
+            const cs = (el) => window.getComputedStyle(el);
+            const px = (v) => parseFloat(v) || 0;
+
+            // Heading styles (limit 8)
+            const headings = [];
+            document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
+                if (headings.length >= 8) return;
+                const s = cs(h);
+                const r = h.getBoundingClientRect();
+                headings.push({
+                    tag: h.tagName.toLowerCase(),
+                    text: h.innerText.trim().slice(0, 60),
+                    fontSize: px(s.fontSize),
+                    fontWeight: parseInt(s.fontWeight) || 0,
+                    lineHeight: px(s.lineHeight),
+                    color: s.color,
+                    marginTop: px(s.marginTop),
+                    marginBottom: px(s.marginBottom),
+                    top: Math.round(r.top),
+                    visible: r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none',
+                });
+            });
+
+            // Body text samples — use only <p> instead of p/li/td/span/a (avoids iterating thousands)
+            const bodyTexts = [];
+            document.querySelectorAll('p').forEach(el => {
+                if (bodyTexts.length >= 10) return;
+                const s = cs(el);
+                const txt = el.innerText.trim();
+                if (!txt || txt.length < 5) return;
+                bodyTexts.push({
+                    tag: 'p',
+                    fontSize: px(s.fontSize),
+                    fontWeight: parseInt(s.fontWeight) || 0,
+                    lineHeight: px(s.lineHeight),
+                    color: s.color,
+                });
+            });
+
+            // CTA elements (limit 4)
+            const ctas = [];
+            const ctaSelector = 'button, a.btn, a.button, [role=button], input[type=submit]';
+            document.querySelectorAll(ctaSelector).forEach(el => {
+                if (ctas.length >= 4) return;
+                const s = cs(el);
+                const r = el.getBoundingClientRect();
+                ctas.push({
+                    tag: el.tagName.toLowerCase(),
+                    text: el.innerText.trim().slice(0, 40),
+                    fontSize: px(s.fontSize),
+                    fontWeight: parseInt(s.fontWeight) || 0,
+                    color: s.color,
+                    backgroundColor: s.backgroundColor,
+                    padding: px(s.paddingTop) + px(s.paddingBottom),
+                    top: Math.round(r.top),
+                    width: Math.round(r.width),
+                    height: Math.round(r.height),
+                });
+            });
+
+            // Section spacing (limit 6)
+            const sections = [];
+            document.querySelectorAll('section, article, main').forEach(el => {
+                if (sections.length >= 6) return;
+                const s = cs(el);
+                const r = el.getBoundingClientRect();
+                sections.push({
+                    tag: el.tagName.toLowerCase(),
+                    className: (el.className || '').toString().slice(0, 50),
+                    paddingTop: px(s.paddingTop),
+                    paddingBottom: px(s.paddingBottom),
+                    marginTop: px(s.marginTop),
+                    marginBottom: px(s.marginBottom),
+                    height: Math.round(r.height),
+                    top: Math.round(r.top),
+                    backgroundColor: s.backgroundColor,
+                });
+            });
+
+            // Viewport info
+            const body = document.body;
+            const bodyStyle = body ? cs(body) : null;
+            const bodyBg = bodyStyle ? bodyStyle.backgroundColor : 'rgb(255,255,255)';
+
+            return {
+                headings: headings,
+                bodyTexts: bodyTexts,
+                ctas: ctas,
+                sections: sections,
+                bodyBackground: bodyBg,
+                viewportHeight: window.innerHeight,
+            };
+        }"""),
     }
 
 
@@ -352,6 +487,8 @@ async def crawl_site(scan_id: int):
                     "meta_description": result.get("meta_description", ""),
                     "viewport_meta": result.get("viewport_meta", False),
                     "lang_attr": result.get("lang_attr", ""),
+                    "rendered_styles": result.get("rendered_styles", {}),
+                    "core_web_vitals": result.get("core_web_vitals", {}),
                 }
 
                 # Canonical dedup

@@ -4,6 +4,64 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 
 
+# ─── Page Intent Classification ─────────────────────────
+
+# Pages that DON'T need conversion CTAs
+INFO_PAGE_PATTERNS = {
+    "privacy", "policy", "terms", "conditions", "legal", "disclaimer",
+    "sitemap", "cookie", "consent", "gdpr", "refund", "cancellation",
+    "faq", "help", "support", "documentation", "docs", "glossary",
+    "accessibility", "color-definition", "whoweare", "who-we-are",
+    "license", "attributions", "changelog", "release-notes",
+    "about-us", "about", "our-story", "team", "leadership",
+    "news", "press", "media", "blog", "articles",
+    "testimonials", "reviews", "case-studies",
+}
+
+# Pages that DO need conversion CTAs
+CONVERSION_PAGE_PATTERNS = {
+    "contact", "enquiry", "inquiry", "get-quote", "pricing", "plans",
+    "services", "solutions", "products", "features",
+    "careers", "jobs", "hiring", "apply", "recruitment",
+    "signup", "sign-up", "register", "demo", "trial", "free-trial",
+    "book", "schedule", "appointment", "consultation",
+    "download", "resources", "whitepaper", "ebook",
+    "partners", "partner", "affiliate", "reseller",
+}
+
+
+def _classify_page_intent(url: str, title: str = "") -> str:
+    """Classify page as 'info', 'conversion', or 'neutral'.
+    
+    - 'info': informational pages that don't need CTAs (privacy, terms, sitemap)
+    - 'conversion': pages that should have CTAs (contact, services, pricing)
+    - 'neutral': pages where CTA requirement is ambiguous (homepage, custom pages)
+    """
+    parsed = urlparse(url)
+    path = parsed.path.lower().rstrip("/")
+    title_lower = (title or "").lower()
+    
+    # Check path segments
+    segments = [s for s in path.split("/") if s]
+    all_text = " ".join(segments) + " " + title_lower
+    
+    # Check info patterns
+    for pattern in INFO_PAGE_PATTERNS:
+        if pattern in all_text:
+            return "info"
+    
+    # Check conversion patterns
+    for pattern in CONVERSION_PAGE_PATTERNS:
+        if pattern in all_text:
+            return "conversion"
+    
+    # Homepage is neutral (different CTA expectations)
+    if path in ("", "/"):
+        return "neutral"
+    
+    return "neutral"
+
+
 def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[dict],
                all_elements: dict, ux_data: dict, origin: str) -> list[dict]:
     """Run all UX checks. Returns list of finding dicts."""
@@ -44,7 +102,6 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
 
         _check_missing_hover_states(findings, scan_id, p, soup)
         _check_no_loading_feedback(findings, scan_id, p, soup)
-        _check_broken_interactions(findings, scan_id, p, soup)
         _check_missing_keyboard_navigation(findings, scan_id, p, soup)
         _check_no_error_recovery(findings, scan_id, p, soup)
 
@@ -65,6 +122,9 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
         _check_missing_alt_text(findings, scan_id, p, soup)
         _check_missing_focus_indicators(findings, scan_id, p, soup)
         _check_missing_skip_navigation(findings, scan_id, p, soup)
+
+    # DOM-diff broken interactions — runs Playwright once for all pages
+    _check_broken_interactions(findings, scan_id, pages, page_htmls)
 
     return findings
 
@@ -104,18 +164,140 @@ def _count_sentences(soup: BeautifulSoup) -> list[str]:
 
 
 def _get_cta_elements(soup: BeautifulSoup) -> list:
-    """Return elements that look like CTAs."""
+    """Return elements that are actual action CTAs — not navigation, not informational links.
+    
+    Classification:
+    - navigation: links inside <nav>, <header>, footer, sidebar, <li><ul> dropdowns → EXCLUDED
+    - informational: "read more", "learn more", "view details" → EXCLUDED  
+    - secondary CTA: less prominent actions → included but marked
+    - primary CTA: main hero/featured actions → included
+    - conversion CTA: sign up, buy, contact, demo → included
+    """
+    NAV_EXCLUDE_PATTERNS = {"nav", "navbar", "menu", "sidebar", "footer-nav", "topbar", "top-bar"}
+    INFO_TEXT_PATTERNS = {
+        "read more", "learn more", "view more", "see more", "find out more",
+        "discover more", "explore more", "click here", "here", "more",
+        "view details", "see details", "learn about", "find out",
+        "continue reading", "keep reading", "go back", "back to",
+        "show more", "show all", "load more", "view all", "see all",
+        "browse", "explore", "view", "see", "read", "watch",
+        "next", "previous", "prev", "back", "forward",
+        "home", "about us", "contact us", "sitemap",
+    }
+    FOOTER_KEYWORDS = {
+        "privacy", "policy", "terms", "conditions", "legal", "disclaimer",
+        "copyright", "©", "all rights reserved",
+        "facebook", "twitter", "instagram", "linkedin", "youtube",
+        "github", "social",
+    }
+
+    def _is_in_nav_context(tag):
+        """Check if tag is inside nav/header/footer/dropdown/list-menu context."""
+        parent = tag.parent
+        for _ in range(10):
+            if parent is None:
+                break
+            tag_name = parent.name if hasattr(parent, 'name') else ""
+            classes = " ".join(parent.get("class", [])).lower() if hasattr(parent, 'get') else ""
+
+            # Direct nav/header/footer tags
+            if tag_name in ("nav", "header", "footer"):
+                return True
+
+            # Class-based nav detection
+            for pattern in NAV_EXCLUDE_PATTERNS:
+                if pattern in classes:
+                    return True
+
+            # Dropdown / mega-menu / submenu classes
+            if re.search(r"dropdown|mega-menu|submenu|collapsible|accordion|off-canvas|mobile-menu", classes):
+                return True
+
+            # <li> inside <ul> = list-based navigation (dropdown items, menu items, social links)
+            if tag_name == "li":
+                grandparent = parent.parent
+                if grandparent is not None:
+                    gp_name = grandparent.name if hasattr(grandparent, 'name') else ""
+                    if gp_name == "ul":
+                        # Great-grandparent = likely a nav menu container
+                        ggp = grandparent.parent
+                        if ggp is not None:
+                            ggp_name = ggp.name if hasattr(ggp, 'name') else ""
+                            ggp_cls = " ".join(ggp.get("class", [])).lower() if hasattr(ggp, 'get') else ""
+                            if ggp_name in ("nav", "header", "div"):
+                                # If the div has menu/nav/dropdown class, or is inside nav context
+                                if (re.search(r"menu|nav|dropdown|header|sidebar", ggp_cls) or
+                                    ggp_name in ("nav", "header")):
+                                    return True
+                                # Even plain <div> > <ul> > <li> > <a> is likely navigation
+                                # unless it's inside <main> or <article>
+                                if not self_in_main(parent):
+                                    return True
+
+            # <button> inside <li> = toggle button for dropdown
+            if tag_name == "li" and parent.parent is not None:
+                gp_name = parent.parent.name if hasattr(parent.parent, 'name') else ""
+                if gp_name == "ul" and tag.name == "button":
+                    return True
+
+            parent = parent.parent
+        return False
+
+    def self_in_main(tag):
+        """Check if any ancestor up to 10 levels is <main> or <article>."""
+        p = tag.parent
+        for _ in range(10):
+            if p is None:
+                return False
+            name = p.name if hasattr(p, 'name') else ""
+            if name in ("main", "article", "section"):
+                return True
+            p = p.parent
+        return False
+
+    def _is_informational(tag):
+        """Check if tag text is informational rather than action-oriented."""
+        text = _cta_text(tag).lower().strip()
+        if not text or len(text) < 2:
+            return True
+        for pattern in INFO_TEXT_PATTERNS:
+            if text == pattern or text.startswith(pattern):
+                return True
+        if len(text.split()) == 1 and text in ("home", "about", "blog", "news", "faq", "help", "menu"):
+            return True
+        return False
+
+    def _is_footer_link(tag):
+        """Check if tag is a footer social/info link."""
+        text = _cta_text(tag).lower().strip()
+        href = tag.get("href", "").lower()
+        for kw in FOOTER_KEYWORDS:
+            if kw in text or kw in href:
+                return True
+        return False
+
     ctas = []
+    seen = set()
     for tag in soup.find_all(["a", "button", "input"]):
+        if _is_in_nav_context(tag):
+            continue
         tag_type = (tag.get("type") or "").lower()
-        if tag.name == "input" and tag_type not in ("submit", "button", "reset", "image"):
+        if tag.name == "input" and tag_type not in ("submit", "button", "image"):
+            continue
+        if _is_informational(tag):
+            continue
+        if _is_footer_link(tag):
             continue
         text = _cta_text(tag)
-        if text:
+        if text and id(tag) not in seen:
+            seen.add(id(tag))
             ctas.append(tag)
+
     for tag in soup.find_all(attrs={"role": "button"}):
         if tag.name not in ("a", "button", "input"):
-            ctas.append(tag)
+            if not _is_in_nav_context(tag) and id(tag) not in seen:
+                ctas.append(tag)
+
     return ctas
 
 
@@ -409,6 +591,10 @@ def _check_no_clear_value_proposition(findings, scan_id, page, soup, homepage):
 # ---------------------------------------------------------------------------
 
 def _check_weak_cta_hierarchy(findings, scan_id, page, soup):
+    intent = _classify_page_intent(page["url"], page.get("title", ""))
+    if intent == "info":
+        return  # informational pages don't need CTA hierarchy
+    
     ctas = _get_cta_elements(soup)
     if len(ctas) < 3:
         return
@@ -428,19 +614,87 @@ def _check_weak_cta_hierarchy(findings, scan_id, page, soup):
 
 
 def _check_competing_ctas(findings, scan_id, page, soup):
+    intent = _classify_page_intent(page["url"], page.get("title", ""))
+    if intent == "info":
+        return  # informational pages don't need CTA focus
+    
     ctas = _get_cta_elements(soup)
-    cta_texts = set()
+    if len(ctas) < 3:
+        return  # fewer than 3 action CTAs = no competition issue
+    
+    # CTA intent categories
+    INTENT_PATTERNS = {
+        "contact": {"contact", "email", "call", "phone", "get in touch", "reach us", "chat"},
+        "sign_up": {"sign up", "signup", "register", "join", "create account", "subscribe"},
+        "buy": {"buy", "purchase", "order", "add to cart", "checkout", "buy now"},
+        "demo": {"demo", "try", "free trial", "get started", "start free", "request demo"},
+        "learn": {"learn more", "read more", "discover", "explore", "find out", "see more", "view more"},
+        "download": {"download", "get", "obtain", "save"},
+        "navigate": {"view all", "see all", "browse", "view details", "see details", "learn about"},
+    }
+    
+    def _classify_cta_intent(text):
+        text_lower = text.lower().strip()
+        for intent_name, keywords in INTENT_PATTERNS.items():
+            for kw in keywords:
+                if kw in text_lower:
+                    return intent_name
+        return "other"
+    
+    # Classify each CTA
+    cta_data = []
     for cta in ctas:
-        text = _cta_text(cta).strip().lower()
-        if text:
-            cta_texts.add(text)
-
-    if len(cta_texts) > 8:
+        text = _cta_text(cta).strip()
+        if not text or len(text) < 2:
+            continue
+        cta_intent = _classify_cta_intent(text)
+        classes = " ".join(cta.get("class", [])).lower()
+        is_primary_style = any(p in classes for p in ("primary", "hero", "main", "btn-primary", "featured", "large", "big"))
+        cta_data.append({
+            "text": text,
+            "intent": cta_intent,
+            "is_primary_style": is_primary_style,
+            "element": cta,
+        })
+    
+    if not cta_data:
+        return
+    
+    # Group by intent
+    by_intent = {}
+    for cta in cta_data:
+        by_intent.setdefault(cta["intent"], []).append(cta)
+    
+    # Check for genuine duplicates: same intent, 3+ CTAs
+    competing_intents = []
+    for intent_name, group in by_intent.items():
+        if intent_name == "other":
+            continue
+        if len(group) >= 3:
+            competing_intents.append((intent_name, group))
+    
+    # Check visual hierarchy: are primary CTAs distinguishable?
+    primary_count = sum(1 for c in cta_data if c["is_primary_style"])
+    has_clear_hierarchy = primary_count > 0 and primary_count <= 3
+    
+    # Only flag if there are genuine competing intents
+    if competing_intents:
+        for intent_name, group in competing_intents:
+            samples = ", ".join('"{}"'.format(c["text"][:30]) for c in group[:4])
+            severity = "medium" if len(group) >= 5 else "low"
+            _add_finding(findings, scan_id, "competing_ctas", severity,
+                         f"Competing {intent_name} CTAs ({len(group)} similar): {page['url']}",
+                         page["url"], page["id"],
+                         f"{len(group)} CTAs with same intent ({intent_name}): {samples}",
+                         f"Consolidate into 1-2 {intent_name} CTAs to reduce user decision fatigue")
+    
+    # Flag if too many CTAs with no visual hierarchy
+    if len(cta_data) > 12 and not has_clear_hierarchy:
         _add_finding(findings, scan_id, "competing_ctas", "medium",
-                     f"Competing CTAs ({len(cta_texts)} different CTA texts): {page['url']}",
+                     f"No CTA Hierarchy ({len(cta_data)} CTAs, {primary_count} primary-styled): {page['url']}",
                      page["url"], page["id"],
-                     f"Page has {len(cta_texts)} distinct CTA texts competing for attention",
-                     "Focus on 1-2 primary CTAs per page and remove or de-emphasize secondary actions")
+                     f"Page has {len(cta_data)} CTAs but only {primary_count} with primary styling — no clear focal point",
+                     "Designate 1-2 primary CTAs with contrasting style; de-emphasize secondary CTAs")
 
 
 def _check_dead_end_pages(findings, scan_id, page, soup):
@@ -510,6 +764,14 @@ HOVER_PATTERNS = re.compile(
     r"hover|:hover|mouse-hover|on-hover|mouseover|pointer-over",
     re.I,
 )
+FOCUS_PATTERNS = re.compile(
+    r":focus-visible|:focus-within|:focus\b|focus-visible|focus-within",
+    re.I,
+)
+FOCUS_OUTLINE_PATTERNS = re.compile(
+    r"outline\s*:\s*(none|0|transparent|hidden)",
+    re.I,
+)
 LOADING_PATTERNS = re.compile(
     r"loading|spinner|loader|progress|ajax-loading|is-loading|isLoading|skeleton",
     re.I,
@@ -517,6 +779,11 @@ LOADING_PATTERNS = re.compile(
 
 
 def _check_missing_hover_states(findings, scan_id, page, soup):
+    """Check for missing :hover CSS on interactive elements.
+    
+    Hover is a mouse interaction feedback — NOT an accessibility requirement.
+    Severity: low (nice-to-have, not a UX failure).
+    """
     buttons = soup.find_all("button")
     links = soup.find_all("a")
     interactive = buttons + links
@@ -524,37 +791,58 @@ def _check_missing_hover_states(findings, scan_id, page, soup):
     if len(interactive) < 5:
         return
 
-    has_hover = False
-    for tag in soup.find_all(["style"]):
-        text = tag.get_text()
-        if HOVER_PATTERNS.search(text):
-            has_hover = True
-            break
+    css_text = ""
+    for tag in soup.find_all("style"):
+        css_text += tag.get_text() + " "
+    for tag in interactive:
+        css_text += tag.get("style", "") + " "
 
+    has_hover = bool(HOVER_PATTERNS.search(css_text))
+
+    # Check class names for hover utilities (Tailwind, Bootstrap)
     if not has_hover:
         for tag in interactive:
-            classes = " ".join(tag.get("class", []))
-            if HOVER_PATTERNS.search(classes):
-                has_hover = True
-                break
-            style = tag.get("style", "")
-            if HOVER_PATTERNS.search(style):
+            classes = " ".join(tag.get("class", [])).lower()
+            if "hover" in classes:
                 has_hover = True
                 break
 
     if not has_hover:
         _add_finding(findings, scan_id, "missing_hover_states", "low",
-                     f"Missing Hover States ({len(interactive)} interactive elements): {page['url']}",
+                     f"Missing :hover Styles ({len(interactive)} elements): {page['url']}",
                      page["url"], page["id"],
-                     f"{len(interactive)} interactive elements with no detectable hover/focus styles",
-                     "Add :hover and :focus CSS states for all interactive elements to provide visual feedback")
+                     "No :hover CSS found — interactive elements lack visual feedback on mouse hover",
+                     "Add :hover styles (color change, underline, background) to provide mouse interaction feedback")
 
 
 def _check_no_loading_feedback(findings, scan_id, page, soup):
+    """Check for loading feedback on forms.
+    
+    Static HTML can't verify if async interactions actually show loading states.
+    If forms exist but no loading indicators found in CSS → "Not Tested", not an issue.
+    Only flag if we can confirm the issue (e.g., form has AJAX attribute but no spinner).
+    """
     forms = soup.find_all("form")
     if not forms:
         return
 
+    # Check if any form uses async submission (AJAX)
+    async_forms = []
+    for form in forms:
+        action = form.get("action", "")
+        method = form.get("method", "get").lower()
+        attrs = " ".join(f"{k}={v}" for k, v in form.attrs.items()).lower()
+        has_ajax = any(kw in attrs for kw in ("ajax", "fetch", "xhr", "data-remote", "data-ajax"))
+        has_file = form.find("input", {"type": "file"})
+        has_textarea = form.find("textarea")
+        # Forms with file upload or long text are likely to benefit from loading feedback
+        if has_ajax or has_file or has_textarea:
+            async_forms.append(form)
+
+    if not async_forms:
+        return  # No async forms = loading feedback not relevant
+
+    # Check CSS for loading indicators
     has_loading = False
     for tag in soup.find_all(["style"]):
         text = tag.get_text()
@@ -570,55 +858,223 @@ def _check_no_loading_feedback(findings, scan_id, page, soup):
                 break
 
     if not has_loading:
-        _add_finding(findings, scan_id, "no_loading_feedback", "low",
-                     f"No Loading Feedback ({len(forms)} forms): {page['url']}",
+        _add_finding(findings, scan_id, "no_loading_feedback", "info",
+                     f"No Loading Feedback Detected ({len(async_forms)} async forms): {page['url']}",
                      page["url"], page["id"],
-                     f"{len(forms)} form(s) found with no loading indicator classes",
-                     "Add loading spinners or progress indicators for form submissions and async operations")
+                     f"{len(async_forms)} form(s) with async behavior found but no loading indicator in CSS — not verified",
+                     "Consider adding loading spinners for form submissions (not verified from static HTML)")
 
 
-def _check_broken_interactions(findings, scan_id, page, soup):
-    broken_count = 0
+def _check_broken_interactions(findings, scan_id, pages, page_htmls):
+    """Detect truly broken interactions by clicking elements and checking DOM/state changes.
+    
+    Strategy: 
+    1. Find suspicious elements (javascript:void(0), empty onclick, divs/spans with click handlers)
+    2. Snapshot DOM before click
+    3. Click element
+    4. Compare DOM after click
+    5. DOM changed = working, DOM unchanged = broken
+    """
+    try:
+        import asyncio
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return
 
+    async def _run_dom_diff_check():
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                viewport={"width": 1280, "height": 720},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            )
+
+            pages_checked = 0
+            MAX_PAGES = 5
+            for pg in pages:
+                if pages_checked >= MAX_PAGES:
+                    break
+                if pg.get("status_code") and pg["status_code"] >= 400:
+                    continue
+                soup = page_htmls.get(pg["url"])
+                if not soup:
+                    continue
+
+                suspicious = _find_suspicious_interactive_elements(soup)
+                if not suspicious:
+                    continue
+
+                try:
+                    page = await context.new_page()
+                    await page.goto(pg["url"], timeout=12000, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(600)
+
+                    broken_count = 0
+
+                    for selector, tag_desc in suspicious[:5]:
+                        try:
+                            el = page.locator(selector).first
+                            if not await el.is_visible(timeout=300):
+                                continue
+
+                            html_before = await page.evaluate("() => document.body.innerHTML.length")
+
+                            await el.click(timeout=1500)
+                            await page.wait_for_timeout(400)
+
+                            html_after = await page.evaluate("() => document.body.innerHTML.length")
+
+                            if html_before == html_after:
+                                broken_count += 1
+
+                        except Exception:
+                            broken_count += 1
+
+                    if broken_count > 0:
+                        _add_finding(findings, scan_id, "broken_interactions", "critical",
+                                     f"Broken Interactions ({broken_count} non-functional): {pg['url']}",
+                                     pg["url"], pg["id"],
+                                     f"{broken_count} clickable elements had no DOM/state change after click",
+                                     "Ensure click handlers trigger visible state changes")
+
+                    await page.close()
+                    pages_checked += 1
+
+                except Exception:
+                    pass
+
+            await context.close()
+            await browser.close()
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                pool.submit(lambda: asyncio.run(_run_dom_diff_check()))
+        else:
+            loop.run_until_complete(_run_dom_diff_check())
+    except Exception:
+        pass
+
+
+def _find_suspicious_interactive_elements(soup) -> list[tuple[str, str]]:
+    """Find elements that are suspicious — javascript:void(0), empty onclick, clickable non-semantic elements.
+    Returns list of (CSS selector, description) tuples. Deduplicated by selector.
+    """
+    seen = set()
+    results = []
+
+    def _add(selector, desc):
+        if selector and selector not in seen:
+            seen.add(selector)
+            results.append((selector, desc))
+
+    # 1. Links with javascript:void(0) or href="#"
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        if href.startswith("javascript:void(0)") or href == "javascript:void(0)":
-            broken_count += 1
+        if "javascript:void(0)" in href or href == "#":
+            _add(_build_css_selector(a, soup), f"<a> with {href[:30]}")
 
+    # 2. Elements with empty/no-op onclick
     for tag in soup.find_all(True, onclick=True):
-        onclick = tag.get("onclick", "")
-        if re.match(r"^\s*(function\s*\(\)\s*\{\s*\}\s*|void\s*\(\s*\)|\s*)\s*$", onclick):
-            broken_count += 1
+        onclick = tag.get("onclick", "").strip()
+        if not onclick or re.match(r"^\s*(function\s*\(\)\s*\{\s*\}\s*|void\s*\(\s*\)|\s*)\s*$", onclick):
+            _add(_build_css_selector(tag, soup), f"<{tag.name}> with empty onclick")
 
-    if broken_count > 0:
-        _add_finding(findings, scan_id, "broken_interactions", "critical",
-                     f"Broken Interactions ({broken_count} broken handlers): {page['url']}",
-                     page["url"], page["id"],
-                     f"{broken_count} links/handlers with javascript:void(0) or empty onclick functions",
-                     "Replace javascript:void(0) with proper href or button elements; implement actual handler logic")
+    # 3. Non-semantic clickable elements (div/span with role or framework click handlers)
+    for tag in soup.find_all(["div", "span", "li", "td", "p"]):
+        role = tag.get("role", "")
+        tabindex = tag.get("tabindex", "")
+        has_click_attr = any(tag.get(a) for a in ["ng-click", "v-on:click", "@click", "v-on:click.prevent"])
+
+        if has_click_attr or (role in ("button", "link", "tab", "menuitem") and tabindex != "-1"):
+            _add(_build_css_selector(tag, soup), f"<{tag.name}> role={role}")
+
+    return results
+
+
+def _build_css_selector(el, soup) -> str | None:
+    """Build a unique CSS selector for an element."""
+    tag = el.name
+    el_id = el.get("id")
+    if el_id:
+        return f"#{el_id}"
+
+    classes = el.get("class", [])
+    if classes:
+        cls_str = ".".join(c for c in classes if c and not c.startswith("_"))
+        if cls_str:
+            selector = f"{tag}.{cls_str}"
+            try:
+                if len(soup.select(selector)) == 1:
+                    return selector
+            except Exception:
+                pass
+
+    # Fallback: nth-of-type from body
+    parent = el.parent
+    while parent is not None:
+        siblings = [c for c in parent.children if hasattr(c, 'name') and c.name == tag]
+        try:
+            idx = siblings.index(el) + 1
+        except ValueError:
+            parent = parent.parent
+            continue
+
+        if parent.name == "body" or parent.name == "html":
+            return f"body > {tag}:nth-of-type({idx})"
+        
+        # Try parent selector
+        parent_sel = _build_css_selector(parent, soup)
+        if parent_sel:
+            return f"{parent_sel} > {tag}:nth-of-type({idx})"
+        
+        parent = parent.parent
+
+    return f"body > {tag}"
 
 
 def _check_missing_keyboard_navigation(findings, scan_id, page, soup):
-    interactive = soup.find_all(["a", "button", "input", "select", "textarea"])
-    non_natively_focusable = []
-    for el in interactive:
-        if el.name == "a" and not el.get("href"):
-            non_natively_focusable.append(el)
-        elif el.name in ("div", "span"):
-            non_natively_focusable.append(el)
+    """Check keyboard navigation for custom interactive elements only.
+    
+    Native elements (<a href>, <button>, <input>) are keyboard accessible by default.
+    Only check: div/span with click handlers, role attributes, or interactive classes.
+    """
+    CLICK_HANDLER_ATTRS = {
+        "onclick", "onkeydown", "onkeypress", "onkeyup",
+        "ng-click", "v-on:click", "@click",
+    }
+    INTERACTIVE_CLASSES = {"btn", "button", "clickable", "link", "nav-link", "tab"}
 
-    custom_interactive = soup.find_all(attrs={"role": re.compile(r"button|link|tab|menuitem", re.I)})
-    for el in custom_interactive:
-        if el.name not in ("a", "button", "input", "select", "textarea"):
-            if not el.get("tabindex"):
-                non_natively_focusable.append(el)
+    non_focusable = []
 
-    if len(non_natively_focusable) > 3:
+    # Custom elements with click handlers or interactive roles
+    for tag in soup.find_all(["div", "span", "p", "li", "td", "th"]):
+        has_click = any(tag.get(attr) for attr in CLICK_HANDLER_ATTRS)
+        classes = " ".join(tag.get("class", [])).lower()
+        has_click_class = any(kw in classes for kw in INTERACTIVE_CLASSES)
+        has_role = bool(tag.get("role"))
+
+        if not has_click and not has_click_class and not has_role:
+            continue
+
+        # Custom elements need tabindex to be keyboard focusable
+        tabindex = tag.get("tabindex")
+        has_tabindex = tabindex is not None and tabindex != "-1"
+
+        if not has_tabindex:
+            non_focusable.append(tag)
+
+    if len(non_focusable) > 3:
         _add_finding(findings, scan_id, "missing_keyboard_navigation", "medium",
-                     f"Missing Keyboard Navigation ({len(non_natively_focusable)} elements): {page['url']}",
+                     f"Missing Keyboard Navigation ({len(non_focusable)} custom elements): {page['url']}",
                      page["url"], page["id"],
-                     f"{len(non_natively_focusable)} interactive elements lack tabindex or are not natively focusable",
-                     "Ensure all interactive elements are keyboard-accessible with proper tabindex and focus styles")
+                     f"{len(non_focusable)} custom interactive elements lack tabindex for keyboard access",
+                     'Add tabindex="0" to custom interactive elements (div/span) to enable keyboard navigation')
 
 
 def _check_no_error_recovery(findings, scan_id, page, soup):
@@ -927,36 +1383,55 @@ def _check_missing_alt_text(findings, scan_id, page, soup):
 
 
 def _check_missing_focus_indicators(findings, scan_id, page, soup):
-    focus_outline_removed = False
-    for tag in soup.find_all(["style"]):
-        text = tag.get_text()
-        if re.search(r"outline\s*:\s*none|outline\s*:\s*0", text):
-            focus_outline_removed = True
-            break
+    """Check for missing :focus-visible / :focus CSS on interactive elements.
+    
+    Focus styles are an accessibility requirement — keyboard users need to see
+    which element is active.
+    
+    Checks:
+    1. :focus-visible / :focus in CSS → present = good
+    2. outline:none without replacement → HIGH (removes focus indicator)
+    3. No :focus styles at all → MEDIUM (keyboard navigation broken)
+    """
+    buttons = soup.find_all("button")
+    links = soup.find_all("a")
+    interactive = buttons + links
 
-    if not focus_outline_removed:
-        for tag in soup.find_all(True):
-            style = tag.get("style", "")
-            if re.search(r"outline\s*:\s*none|outline\s*:\s*0", style):
-                focus_outline_removed = True
-                break
-
-    if not focus_outline_removed:
+    if len(interactive) < 5:
         return
 
-    has_focus_styles = False
-    for tag in soup.find_all(["style"]):
-        text = tag.get_text()
-        if re.search(r":focus", text):
-            has_focus_styles = True
-            break
+    css_text = ""
+    for tag in soup.find_all("style"):
+        css_text += tag.get_text() + " "
+    for tag in interactive:
+        css_text += tag.get("style", "") + " "
 
-    if focus_outline_removed and not has_focus_styles:
+    has_focus = bool(FOCUS_PATTERNS.search(css_text))
+    has_outline_none = bool(FOCUS_OUTLINE_PATTERNS.search(css_text))
+
+    # Check class names for focus utilities (Tailwind, Bootstrap)
+    if not has_focus:
+        for tag in interactive:
+            classes = " ".join(tag.get("class", [])).lower()
+            if "focus" in classes:
+                has_focus = True
+                break
+
+    # outline:none without :focus-visible replacement = HIGH
+    if has_outline_none and not has_focus:
         _add_finding(findings, scan_id, "missing_focus_indicators", "high",
-                     f"Missing Focus Indicators (outline:none without :focus styles): {page['url']}",
+                     f"Focus Indicator Removed (outline:none without :focus-visible): {page['url']}",
                      page["url"], page["id"],
-                     "Focus outlines are removed but no alternative :focus styles are defined",
-                     "Provide visible :focus styles (box-shadow, border, background) to replace removed outlines")
+                     "outline:none found without :focus-visible replacement — keyboard focus invisible",
+                     "Remove outline:none or pair it with :focus-visible { outline: 2px solid ... }")
+
+    # No :focus styles at all = MEDIUM
+    elif not has_focus:
+        _add_finding(findings, scan_id, "missing_focus_indicators", "medium",
+                     f"No :focus-visible Styles ({len(interactive)} elements): {page['url']}",
+                     page["url"], page["id"],
+                     "No :focus-visible or :focus CSS found — keyboard users can't see which element is active",
+                     "Add :focus-visible styles (outline, box-shadow) to all interactive elements for keyboard accessibility")
 
 
 def _check_missing_skip_navigation(findings, scan_id, page, soup):
