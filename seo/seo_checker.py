@@ -1126,10 +1126,15 @@ def check_core_web_vitals(scan_id: int, pages: list[dict], ux_data: dict):
                  f"Average CLS {avg_cls:.3f} across {len(cls_values)} pages (>0.15)")
 
 def run_seo_checks(scan_id: int):
+    print(f"\n{'='*60}")
+    print(f"  SEO CHECKS — Scan #{scan_id}")
+    print(f"{'='*60}")
+
     db.delete_findings(scan_id, CATEGORY)
 
     pages = db.get_pages(scan_id)
     if not pages:
+        print(f"[SEO] No pages found — skipping")
         return
 
     scan = db.get_scan(scan_id)
@@ -1141,22 +1146,48 @@ def run_seo_checks(scan_id: int):
 
     edges = db.get_edges(scan_id)
 
+    print(f"[SEO] Checking {len(pages)} pages...")
+
+    print(f"[SEO] Running crawl access checks...")
     check_crawl_access(scan_id, pages)
+
+    print(f"[SEO] Running title checks...")
     check_titles(scan_id, pages)
+
+    print(f"[SEO] Running meta description checks...")
     check_meta_descriptions(scan_id, pages)
+
+    print(f"[SEO] Running heading checks...")
     check_headings(scan_id, pages)
+
+    print(f"[SEO] Running image checks...")
     check_images(scan_id, pages)
+
+    print(f"[SEO] Running canonical checks...")
     check_canonical(scan_id, pages)
+
+    print(f"[SEO] Running structured data checks...")
     check_structured_data(scan_id, pages)
+
+    print(f"[SEO] Running viewport checks...")
     check_viewport(scan_id, pages)
+
+    print(f"[SEO] Running link text checks...")
     check_link_text(scan_id, pages)
+
+    print(f"[SEO] Running broken link checks...")
     check_broken_links(scan_id, pages)
+
+    print(f"[SEO] Running duplicate content detection...")
     check_duplicate_content(scan_id, pages)
+
+    print(f"[SEO] Running internal linking analysis...")
     check_internal_linking(scan_id, pages, edges)
 
     # Core Web Vitals (needs ux_data)
     import json as _json
     import os as _os
+    print(f"[SEO] Running Core Web Vitals analysis...")
     ux_dir = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "html", f"scan{scan_id}")
     ux_file = _os.path.join(ux_dir, "ux_data.json")
     ux_data = {}
@@ -1168,16 +1199,23 @@ def run_seo_checks(scan_id: int):
             pass
     check_core_web_vitals(scan_id, pages, ux_data)
 
+    print(f"[SEO] Running HTTPS checks...")
     check_https(scan_id, pages)
 
     if origin:
+        print(f"[SEO] Running robots.txt & sitemap checks...")
         check_robots_and_sitemap(scan_id, origin)
 
+    print(f"[SEO] Running content SEO analysis...")
     check_content_seo(scan_id, pages)
     check_indexability(scan_id, pages)
     check_open_graph(scan_id, pages)
 
-    return db.get_findings(scan_id, CATEGORY)
+    findings = db.get_findings(scan_id, CATEGORY)
+    print(f"[SEO] Complete — {len(findings)} total findings")
+    print(f"{'='*60}\n")
+
+    return findings
 
 
 # ─── Content SEO — Topic, Intent, Keywords, Entities ────

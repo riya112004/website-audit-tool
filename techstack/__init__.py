@@ -212,6 +212,8 @@ def detect_tech(pages: list[dict], edges: list[dict] = None) -> dict:
     Analyzes HTML source and response headers from all crawled pages.
     Returns categorized technology stack.
     """
+    print(f"\n[TechStack] Analyzing {len(pages)} pages for technologies...")
+
     result = {
         "frontend": [],
         "cms": [],
@@ -290,6 +292,13 @@ def detect_tech(pages: list[dict], edges: list[dict] = None) -> dict:
     # Deduplicate and sort
     for cat in result:
         result[cat] = sorted(set(result[cat]))
+
+    total = sum(len(v) for v in result.values())
+    found = [f"{cat}: {', '.join(techs)}" for cat, techs in result.items() if techs]
+    for line in found:
+        print(f"[TechStack] {line}")
+    if total == 0:
+        print(f"[TechStack] No technologies detected")
 
     return result
 

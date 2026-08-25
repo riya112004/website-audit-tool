@@ -100,14 +100,20 @@ def run_analyzers(scan_id: int) -> dict:
             "overall": {"score": int, "grade": str}
         }
     """
+    print(f"\n{'='*60}")
+    print(f"  ANALYZERS — Scan #{scan_id}")
+    print(f"{'='*60}")
+
     pages = db.get_pages(scan_id)
     if not pages:
+        print(f"[Analyzers] No pages found — skipping")
         return {"ui": {"score": 0, "grade": "N/A", "findings": []},
                 "ux": {"score": 0, "grade": "N/A", "findings": []},
                 "seo": {"score": 0, "grade": "N/A"},
                 "overall": {"score": 0, "grade": "N/A"}}
 
     total_pages = len(pages)
+    print(f"[Analyzers] Processing {total_pages} pages...")
 
     # ── Step 1: Clear old findings (no stale data) ────────
     _clear_old_findings(scan_id)
@@ -141,12 +147,24 @@ def run_analyzers(scan_id: int) -> dict:
         all_elements[p["url"]] = db.get_elements(p["id"])
 
     # ── Step 4: RAW DETECTION — run all analyzers ────────
+    print(f"[Analyzers] Running UI analyzer...")
     ui_findings_raw, ui_vh_data = analyze_ui(scan_id, pages, page_htmls, ux_data)
+    print(f"[Analyzers] UI: {len(ui_findings_raw)} raw findings detected")
+
+    print(f"[Analyzers] Running UX analyzer...")
     ux_findings_raw = analyze_ux(scan_id, pages, page_htmls, edges, all_elements, ux_data, origin)
+    print(f"[Analyzers] UX: {len(ux_findings_raw)} raw findings detected")
+
+    print(f"[Analyzers] Running accessibility analyzer...")
     a11y_findings_raw = analyze_accessibility(scan_id, pages, page_htmls, all_elements)
+    print(f"[Analyzers] A11y: {len(a11y_findings_raw)} raw findings detected")
+
+    print(f"[Analyzers] Running visual analyzer...")
     vision_findings_raw = analyze_visual(scan_id, pages, ux_data)
+    print(f"[Analyzers] Vision: {len(vision_findings_raw)} raw findings detected")
 
     # ── Step 5: VALIDATE + DEDUPLICATE + ENRICH ──────────
+    print(f"[Analyzers] Validating & enriching findings...")
     # UI: validate → aggregate (one finding per check_name)
     ui_findings = _process_findings(ui_findings_raw, total_pages)
 
@@ -163,7 +181,10 @@ def run_analyzers(scan_id: int) -> dict:
     # Vision: keep raw (LLM findings are already validated by the model)
     vision_findings = vision_findings_raw
 
+    print(f"[Analyzers] Enriched: UI={len(ui_findings)}, UX={len(ux_findings)}, SEO={len(seo_findings_raw)}, Vision={len(vision_findings)}")
+
     # ── Step 6: Save enriched findings ────────────────────
+    print(f"[Analyzers] Saving findings to database...")
     _save_findings(scan_id, "ui", ui_findings)
     _save_findings(scan_id, "ux", ux_findings)
     _save_findings(scan_id, "a11y", [])  # Already merged into ux
@@ -172,6 +193,7 @@ def run_analyzers(scan_id: int) -> dict:
     _save_findings(scan_id, "seo", seo_findings_raw)
 
     # ── Step 7: SCORE — with N/A support ──────────────────
+    print(f"[Analyzers] Computing scores...")
     ui_checked = ui_vh_data.get("checked_categories") or set(UI_WEIGHTS.keys())
     ui_result = compute_ui_score(ui_findings, vh_score=ui_vh_data["visual_hierarchy_score"],
                                  checked_categories=ui_checked)
@@ -183,6 +205,7 @@ def run_analyzers(scan_id: int) -> dict:
     )
 
     # ── Step 8: Save ALL scores atomically ───────────────
+    print(f"[Analyzers] Saving scores to database...")
     db.update_scan(
         scan_id,
         ui_score=ui_result["ui_score"],
@@ -190,6 +213,13 @@ def run_analyzers(scan_id: int) -> dict:
         seo_score=seo_result["seo_score"],
         overall_score=overall_result["overall_score"],
     )
+
+    print(f"\n  --- SCORES ---")
+    print(f"  UI:  {ui_result['ui_score']}/100 ({ui_result['grade']})")
+    print(f"  UX:  {ux_result['ux_score']}/100 ({ux_result['grade']})")
+    print(f"  SEO: {seo_result['seo_score']}/100 ({seo_result['grade']})")
+    print(f"  Overall: {overall_result['overall_score']}/100 ({overall_result['grade']})")
+    print(f"{'='*60}\n")
 
     return {
         "ui": {

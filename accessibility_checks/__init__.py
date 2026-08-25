@@ -22,6 +22,7 @@ async def run_axe_on_pages(pages: list[dict], max_pages: int = 5) -> dict:
             "raw_violations": list  # raw axe violations for detailed per-page view
         }
     """
+    print(f"\n[Accessibility] Starting axe-core audit...")
     try:
         from playwright.async_api import async_playwright
         from axe_playwright_python.async_playwright import Axe
@@ -70,12 +71,15 @@ async def run_axe_on_pages(pages: list[dict], max_pages: int = 5) -> dict:
 
         for p in selected:
             try:
+                print(f"[Accessibility] Checking: {p['url'][:60]}...")
                 page = await context.new_page()
                 await page.goto(p["url"], timeout=20000, wait_until="domcontentloaded")
                 await page.wait_for_timeout(2000)  # let page settle
 
                 results = await axe.run(page, options={"resultTypes": ["violations"]})
                 pages_checked += 1
+                violations_count = len(results.response.get("violations", []))
+                print(f"[Accessibility] [{pages_checked}/{len(selected)}] {p['url'][:50]} — {violations_count} violation types found")
 
                 for v in results.response.get("violations", []):
                     # Count nodes (affected elements) per violation
@@ -162,6 +166,8 @@ async def run_axe_on_pages(pages: list[dict], max_pages: int = 5) -> dict:
 
     total_checks = len(axe_unique_rules())
     passed = total_checks - len(grouped)
+
+    print(f"[Accessibility] Score: {score}/100 — {len(grouped)} issue types, {len(all_violations)} total violations")
 
     return {
         "score": score,

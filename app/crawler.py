@@ -373,6 +373,12 @@ async def crawl_site(scan_id: int):
     if not scan:
         return
 
+    print(f"{'='*60}")
+    print(f"  CRAWLER STARTED — Scan #{scan_id}")
+    print(f"  URL: {scan['start_url']}")
+    print(f"  Max pages: {scan['max_pages']}")
+    print(f"{'='*60}")
+
     db.update_scan(scan_id, status="running", started_at=db.datetime.now(db.timezone.utc).isoformat())
 
     site = db.get_conn().execute("SELECT * FROM sites WHERE id = ?", (scan["site_id"],)).fetchone()
@@ -396,8 +402,10 @@ async def crawl_site(scan_id: int):
     page_ux_data = {}
 
     # ─── Step 1: Pre-populate from sitemap ─────────────────
+    print(f"[Crawler] Fetching sitemap for {origin}...")
     from app.sitemap_parser import fetch_sitemap
     sitemap_urls = fetch_sitemap(origin)
+    print(f"[Crawler] Found {len(sitemap_urls)} URLs from sitemap")
     for surl in sitemap_urls:
         surl_norm = normalize_url(surl)
         if surl_norm not in seen_raw:
@@ -413,6 +421,7 @@ async def crawl_site(scan_id: int):
     # sitemap info logged silently, not stored in error field
 
     # ─── Step 2: Launch browser ───────────────────────────
+    print(f"[Crawler] Launching Chromium browser...")
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
 
@@ -458,6 +467,9 @@ async def crawl_site(scan_id: int):
             if not batch:
                 break
 
+            urls_str = ", ".join(u.split("//")[-1][:30] for u, _ in batch)
+            print(f"[Crawler] Crawling batch ({len(batch)} pages): {urls_str}")
+
             # Crawl batch concurrently
             tasks = [_crawl_with_semaphore(url, pno) for url, pno in batch]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -465,10 +477,12 @@ async def crawl_site(scan_id: int):
             for (url, page_no), result in zip(batch, results):
                 if isinstance(result, Exception):
                     failed.add(url)
+                    print(f"[Crawler] FAILED: {url[:60]} — {result}")
                     continue
 
                 if result is None or result.get("error"):
                     failed.add(url)
+                    print(f"[Crawler] FAILED: {url[:60]} — {result.get('error', 'unknown') if result else 'None'}")
                     continue
 
                 # Store UX data for this page
@@ -499,6 +513,7 @@ async def crawl_site(scan_id: int):
 
                 pages_crawled += 1
                 elements_found += result["elements_count"]
+                print(f"[Crawler] [{pages_crawled}/{max_pages}] Crawled: {url[:60]} (status={result['status_code']}, {result['elements_count']} elements)")
 
                 # Enqueue discovered links
                 for href in result["all_links"]:
@@ -537,6 +552,7 @@ async def crawl_site(scan_id: int):
     pages_to_check_mobile = [p for p in pages_list if p.get("status_code") and 200 <= p["status_code"] < 400][:5]
 
     if pages_to_check_mobile:
+        print(f"[Crawler] Running mobile viewport check on {len(pages_to_check_mobile)} pages...")
         async with async_playwright() as pw2:
             mobile_browser = await pw2.chromium.launch(headless=True)
             for p in pages_to_check_mobile:
@@ -608,6 +624,8 @@ async def crawl_site(scan_id: int):
 
     # ─── Step 4: Finalize ─────────────────────────────────
     elapsed = time.time() - start_time
+    print(f"[Crawler] Mobile viewport check complete — {len(mobile_ux_results)} pages checked")
+
     summary = {
         "start_url": scan["start_url"],
         "pages_attempted": pages_attempted,
@@ -625,6 +643,15 @@ async def crawl_site(scan_id: int):
         elements_found=elements_found,
         interactions_run=0,
     )
+
+    print(f"\n{'='*60}")
+    print(f"  CRAWL COMPLETE — Scan #{scan_id}")
+    print(f"  Pages crawled: {pages_crawled}/{max_pages}")
+    print(f"  Pages failed: {len(failed)}")
+    print(f"  Elements found: {elements_found}")
+    print(f"  Total links: {len(all_links)}")
+    print(f"  Time: {int(elapsed // 60)}m {int(elapsed % 60)}s")
+    print(f"{'='*60}\n")
 
 
 def run_crawl_in_thread(scan_id: int):

@@ -2,6 +2,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import threading
 import traceback
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
@@ -60,13 +61,42 @@ async def start_scan(request: Request):
     # Fire-and-forget subprocess — separate process for Playwright
     python = sys.executable
     script = os.path.join(BASE_DIR, "_run_scan.py")
-    subprocess.Popen(
+    log_dir = os.path.join(BASE_DIR, "data", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"scan_{scan['id']}.log")
+    log_file = open(log_path, "w", encoding="utf-8")
+
+    proc = subprocess.Popen(
         [python, "-u", script, str(scan["id"])],
         cwd=BASE_DIR,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
     )
+
+    # Stream subprocess output to uvicorn terminal in background
+    def _stream_output(proc, log_file):
+        try:
+            for line in proc.stdout:
+                decoded = line.decode("utf-8", errors="replace")
+                sys.stdout.write(decoded)
+                sys.stdout.flush()
+                log_file.write(decoded)
+                log_file.flush()
+        except Exception:
+            pass
+        finally:
+            try:
+                proc.wait()
+            except Exception:
+                pass
+            try:
+                log_file.close()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_stream_output, args=(proc, log_file), daemon=True)
+    t.start()
 
     return RedirectResponse(url=f"/scans/{scan['id']}", status_code=303)
 
@@ -299,3 +329,17 @@ async def api_scan_techstack(scan_id: int):
     from techstack import get_tech_from_db
     tech = get_tech_from_db(scan_id)
     return JSONResponse(tech)
+
+
+@app.get("/api/scan/{scan_id}/log")
+async def api_scan_log(scan_id: int, tail: int = 200):
+    log_path = os.path.join(BASE_DIR, "data", "logs", f"scan_{scan_id}.log")
+    if not os.path.exists(log_path):
+        return JSONResponse({"log": "", "exists": False})
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+            tail_lines = lines[-tail:] if len(lines) > tail else lines
+            return JSONResponse({"log": "".join(tail_lines), "exists": True, "total_lines": len(lines)})
+    except Exception as e:
+        return JSONResponse({"log": f"Error reading log: {e}", "exists": True})

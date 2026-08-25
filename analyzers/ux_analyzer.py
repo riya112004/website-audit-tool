@@ -124,7 +124,9 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
         _check_missing_skip_navigation(findings, scan_id, p, soup)
 
     # DOM-diff broken interactions — runs Playwright once for all pages
+    print(f"[UX] Running broken interactions check (DOM-diff)...")
     _check_broken_interactions(findings, scan_id, pages, page_htmls)
+    print(f"[UX] Broken interactions check complete")
 
     return findings
 
@@ -907,6 +909,7 @@ def _check_broken_interactions(findings, scan_id, pages, page_htmls):
                 if not suspicious:
                     continue
 
+                print(f"[UX] Checking interactions on: {pg['url'][:50]} ({len(suspicious)} suspicious elements)")
                 try:
                     page = await context.new_page()
                     await page.goto(pg["url"], timeout=12000, wait_until="domcontentloaded")
