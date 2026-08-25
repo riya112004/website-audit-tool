@@ -273,6 +273,21 @@ async def scan_detail(request: Request, scan_id: int):
         "grade": _grade(scan.get("missing_features_score", 0)),
     }
 
+    # CTA findings
+    cta_findings = db.get_findings(scan_id, "cta")
+    cta_summary = db.get_findings_summary(scan_id).get("cta", {})
+    cta_grouped = {}
+    for f in cta_findings:
+        name = f["check_name"]
+        if name not in cta_grouped:
+            cta_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
+        cta_grouped[name]["issues"].append(f)
+
+    cta_score_data = {
+        "cta_score": scan.get("cta_score", 0),
+        "grade": _grade(scan.get("cta_score", 0)),
+    }
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
@@ -310,6 +325,10 @@ async def scan_detail(request: Request, scan_id: int):
         "mf_summary": mf_summary,
         "mf_grouped": mf_grouped,
         "mf_score_data": mf_score_data,
+        "cta_findings": cta_findings,
+        "cta_summary": cta_summary,
+        "cta_grouped": cta_grouped,
+        "cta_score_data": cta_score_data,
     })
 
 
