@@ -27,7 +27,7 @@ def main():
     # Step 1: Crawl
     step_start = time.time()
     print(f"\n{'#'*60}")
-    print(f"  STEP 1/6: CRAWLING")
+    print(f"  STEP 1/8: CRAWLING")
     print(f"{'#'*60}")
     asyncio.run(crawl_site(scan_id))
     step_elapsed = time.time() - step_start
@@ -36,7 +36,7 @@ def main():
     # Step 2: SEO checks (populates findings in DB)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 2/6: SEO CHECKS")
+    print(f"  STEP 2/8: SEO CHECKS")
     print(f"{'#'*60}")
     run_seo_checks(scan_id)
     step_elapsed = time.time() - step_start
@@ -45,7 +45,7 @@ def main():
     # Step 3: All analyzers + ALL scores in one pipeline
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 3/6: UI/UX/SEO ANALYZERS + SCORING")
+    print(f"  STEP 3/8: UI/UX/SEO ANALYZERS + SCORING")
     print(f"{'#'*60}")
     results = run_analyzers(scan_id)
     step_elapsed = time.time() - step_start
@@ -54,7 +54,7 @@ def main():
     # Step 4: Accessibility checks (axe-core)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 4/6: ACCESSIBILITY (axe-core)")
+    print(f"  STEP 4/8: ACCESSIBILITY (axe-core)")
     print(f"{'#'*60}")
     try:
         from accessibility_checks import run_axe_on_pages, save_accessibility_to_db
@@ -71,7 +71,7 @@ def main():
     # Step 5: Mobile responsiveness
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 5/6: MOBILE RESPONSIVENESS")
+    print(f"  STEP 5/8: MOBILE RESPONSIVENESS")
     print(f"{'#'*60}")
     mobile_score = 0
     try:
@@ -96,7 +96,7 @@ def main():
     # Step 6: Technology stack detection
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 6/6: TECH STACK DETECTION")
+    print(f"  STEP 6/8: TECH STACK DETECTION")
     print(f"{'#'*60}")
     try:
         from techstack import detect_tech, save_tech_to_db
@@ -110,15 +110,45 @@ def main():
     step_elapsed = time.time() - step_start
     print(f"  >> Step 6 done in {step_elapsed:.1f}s\n")
 
-    # Recompute overall with mobile
+    # Step 7: Missing features audit
+    step_start = time.time()
+    print(f"{'#'*60}")
+    print(f"  STEP 7/8: MISSING FEATURES AUDIT")
+    print(f"{'#'*60}")
+    missing_features_score = 0
+    try:
+        from missing_features import run_missing_features_checks
+        from missing_features.scoring import score_features
+        pages = db.get_pages(scan_id)
+        page_htmls = {}
+        for p in pages:
+            html_path = p.get("raw_html_path")
+            if html_path and os.path.exists(html_path):
+                with open(html_path, "r", encoding="utf-8") as f:
+                    page_htmls[p["id"]] = f.read()
+        mf_result = run_missing_features_checks(pages, page_htmls)
+        mf_scored = score_features(mf_result)
+        db.save_missing_features_findings(scan_id, mf_scored)
+        missing_features_score = mf_scored["missing_features_score"]
+        print(f"[Features] Website type: {mf_scored['website_type']}")
+        print(f"[Features] Score: {missing_features_score}/100 ({mf_scored['grade']})")
+        print(f"[Features] {mf_scored['implemented']} implemented, {mf_scored['partial']} partial, {mf_scored['missing']} missing, {mf_scored['not_applicable']} N/A")
+    except Exception as e:
+        print(f"[Features] Missing features check failed: {e}")
+        import traceback; traceback.print_exc()
+    step_elapsed = time.time() - step_start
+    print(f"  >> Step 7 done in {step_elapsed:.1f}s\n")
+
+    # Step 8: Recompute overall with mobile + missing_features
     from analyzers.scoring import compute_overall_score
     overall = compute_overall_score(
         results["ui"]["score"],
         results["ux"]["score"],
         results["seo"]["score"],
         mobile_score=mobile_score,
+        missing_features_score=missing_features_score,
     )
-    db.update_scan(scan_id, overall_score=overall["overall_score"], mobile_score=mobile_score)
+    db.update_scan(scan_id, overall_score=overall["overall_score"], mobile_score=mobile_score, missing_features_score=missing_features_score)
 
     # Final summary
     total_elapsed = time.time() - total_start
@@ -133,6 +163,7 @@ def main():
     print(f"  UX Score:       {results['ux']['score']}/100 ({results['ux']['grade']})")
     print(f"  SEO Score:      {results['seo']['score']}/100 ({results['seo']['grade']})")
     print(f"  Mobile Score:   {mobile_score}/100")
+    print(f"  Features Score: {missing_features_score}/100")
     print(f"  Overall Score:  {overall['overall_score']}/100 ({overall['grade']})")
     print(f"  ---")
     print(f"  Total time: {int(total_elapsed // 60)}m {int(total_elapsed % 60)}s")

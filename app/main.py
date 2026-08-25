@@ -234,6 +234,11 @@ async def scan_detail(request: Request, scan_id: int):
             a11y_axe_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
         a11y_axe_grouped[name]["issues"].append(f)
 
+    a11y_score_data = {
+        "a11y_score": scan.get("accessibility_score", 0),
+        "grade": _grade(scan.get("accessibility_score", 0)),
+    }
+
     # Tech stack
     from techstack import get_tech_from_db
     tech_stack = get_tech_from_db(scan_id)
@@ -251,6 +256,21 @@ async def scan_detail(request: Request, scan_id: int):
     mobile_score_data = {
         "mobile_score": scan.get("mobile_score", 0),
         "grade": _grade(scan.get("mobile_score", 0)),
+    }
+
+    # Missing features findings
+    mf_findings = db.get_findings(scan_id, "missing_features")
+    mf_summary = db.get_findings_summary(scan_id).get("missing_features", {})
+    mf_grouped = {}
+    for f in mf_findings:
+        name = f["check_name"]
+        if name not in mf_grouped:
+            mf_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
+        mf_grouped[name]["issues"].append(f)
+
+    mf_score_data = {
+        "missing_features_score": scan.get("missing_features_score", 0),
+        "grade": _grade(scan.get("missing_features_score", 0)),
     }
 
     return templates.TemplateResponse(request, "scan_detail.html", {
@@ -283,8 +303,13 @@ async def scan_detail(request: Request, scan_id: int):
         "a11y_axe_findings": a11y_axe_findings,
         "a11y_axe_summary": a11y_axe_summary,
         "a11y_axe_grouped": a11y_axe_grouped,
+        "a11y_score_data": a11y_score_data,
         "tech_stack": tech_stack,
         "overall_score_data": overall_score_data,
+        "mf_findings": mf_findings,
+        "mf_summary": mf_summary,
+        "mf_grouped": mf_grouped,
+        "mf_score_data": mf_score_data,
     })
 
 

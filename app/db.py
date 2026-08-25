@@ -40,7 +40,8 @@ def init_db():
             ux_score          INTEGER DEFAULT 0,
             seo_score         INTEGER DEFAULT 0,
             overall_score     INTEGER DEFAULT 0,
-            mobile_score      INTEGER DEFAULT 0
+            mobile_score      INTEGER DEFAULT 0,
+            missing_features_score INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pages (
@@ -111,6 +112,10 @@ def init_db():
     # migrations
     try:
         conn.execute("ALTER TABLE scans ADD COLUMN mobile_score INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE scans ADD COLUMN missing_features_score INTEGER DEFAULT 0")
     except Exception:
         pass
     conn.commit()
@@ -405,6 +410,26 @@ def save_mobile_findings(scan_id: int, mobile_result: dict):
     conn.execute(
         "UPDATE scans SET mobile_score = ? WHERE id = ?",
         (mobile_result.get("mobile_score", 0), scan_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_missing_features_findings(scan_id: int, mf_result: dict):
+    """Save missing features findings to DB and update scan missing_features_score."""
+    conn = get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+
+    for f in mf_result.get("findings", []):
+        conn.execute(
+            "INSERT INTO findings (scan_id, page_id, category, check_name, severity, message, recommendation, created_at) "
+            "VALUES (?, NULL, 'missing_features', ?, ?, ?, ?, ?)",
+            (scan_id, f["feature_id"], f["severity"], f["message"], f.get("feature_name"), now),
+        )
+
+    conn.execute(
+        "UPDATE scans SET missing_features_score = ? WHERE id = ?",
+        (mf_result.get("missing_features_score", 0), scan_id),
     )
     conn.commit()
     conn.close()
