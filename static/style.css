@@ -151,6 +151,12 @@ tr:hover { background: var(--surface2); }
 .bar-seo { background: #34d399; }
 .bar-seo-bg { background: linear-gradient(90deg, #059669, #34d399, #6ee7b7); }
 .seo-score-card { border-left: 4px solid #34d399; }
+.bar-mobile { background: #f97316; }
+.mobile-findings-card { border-left: 4px solid #f97316; }
+.mobile-score-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.mobile-score-num { font-size: 24px; font-weight: 700; color: #f97316; }
+.mobile-score-grade { font-size: 14px; font-weight: 600; color: var(--dim); }
+.mobile-pages-tested { font-size: 12px; color: var(--dim); margin-left: auto; }
 
 /* Accessibility (axe-core) card */
 .a11y-axe-card { border-left: 4px solid #f97316; }
@@ -173,3 +179,15 @@ tr:hover { background: var(--surface2); }
 .techstack-tag.tag-analytics { background: #06b6d418; color: var(--cyan); border-color: #06b6d430; }
 .techstack-tag.tag-cdn { background: #f9731618; color: #f97316; border-color: #f9731630; }
 .techstack-tag.tag-libraries { background: #ec489918; color: #ec4899; border-color: #ec489930; }
+
+/* Terminal log card */
+.terminal-card { border-left: 4px solid #22c55e; padding: 0; overflow: hidden; }
+.terminal-header { background: #1a1a20; padding: 8px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+.terminal-dot { width: 10px; height: 10px; border-radius: 50%; }
+.terminal-dot.red { background: #ef4444; }
+.terminal-dot.yellow { background: #eab308; }
+.terminal-dot.green { background: #22c55e; }
+.terminal-title { flex: 1; font-size: 12px; font-weight: 600; color: var(--dim); font-family: 'Consolas', 'Courier New', monospace; }
+.btn-terminal { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.btn-terminal:hover { background: var(--border); }
+.terminal-output { background: #0a0a0c; color: #22c55e; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6; padding: 14px; margin: 0; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; }

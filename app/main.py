@@ -238,6 +238,21 @@ async def scan_detail(request: Request, scan_id: int):
     from techstack import get_tech_from_db
     tech_stack = get_tech_from_db(scan_id)
 
+    # Mobile findings
+    mobile_findings = db.get_findings(scan_id, "mobile")
+    mobile_summary = db.get_findings_summary(scan_id).get("mobile", {})
+    mobile_grouped = {}
+    for f in mobile_findings:
+        name = f["check_name"]
+        if name not in mobile_grouped:
+            mobile_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
+        mobile_grouped[name]["issues"].append(f)
+
+    mobile_score_data = {
+        "mobile_score": scan.get("mobile_score", 0),
+        "grade": _grade(scan.get("mobile_score", 0)),
+    }
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
@@ -261,6 +276,10 @@ async def scan_detail(request: Request, scan_id: int):
         "a11y_summary": a11y_summary,
         "a11y_grouped": a11y_grouped,
         "vision_findings": vision_findings,
+        "mobile_findings": mobile_findings,
+        "mobile_summary": mobile_summary,
+        "mobile_grouped": mobile_grouped,
+        "mobile_score_data": mobile_score_data,
         "a11y_axe_findings": a11y_axe_findings,
         "a11y_axe_summary": a11y_axe_summary,
         "a11y_axe_grouped": a11y_axe_grouped,

@@ -39,7 +39,8 @@ def init_db():
             ui_score          INTEGER DEFAULT 0,
             ux_score          INTEGER DEFAULT 0,
             seo_score         INTEGER DEFAULT 0,
-            overall_score     INTEGER DEFAULT 0
+            overall_score     INTEGER DEFAULT 0,
+            mobile_score      INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pages (
@@ -107,6 +108,11 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_findings_page ON findings(page_id);
         CREATE INDEX IF NOT EXISTS idx_findings_category ON findings(category);
     """)
+    # migrations
+    try:
+        conn.execute("ALTER TABLE scans ADD COLUMN mobile_score INTEGER DEFAULT 0")
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -376,6 +382,32 @@ def insert_finding(scan_id: int, category: str, check_name: str, severity: str,
     row = conn.execute("SELECT * FROM findings WHERE id = ?", (finding_id,)).fetchone()
     conn.close()
     return dict(row)
+
+
+def save_mobile_findings(scan_id: int, mobile_result: dict):
+    """Save mobile findings to DB and update scan mobile_score."""
+    conn = get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+
+    pages_map = {}
+    for row in conn.execute("SELECT id, url FROM pages WHERE scan_id = ?", (scan_id,)):
+        pages_map[row["url"]] = row["id"]
+
+    for f in mobile_result.get("all_findings", []):
+        page_url = f.get("page_url")
+        page_id = pages_map.get(page_url)
+        conn.execute(
+            "INSERT INTO findings (scan_id, page_id, category, check_name, severity, message, recommendation, created_at) "
+            "VALUES (?, ?, 'mobile', ?, ?, ?, ?, ?)",
+            (scan_id, page_id, f["check_name"], f["severity"], f["message"], f.get("recommendation"), now),
+        )
+
+    conn.execute(
+        "UPDATE scans SET mobile_score = ? WHERE id = ?",
+        (mobile_result.get("mobile_score", 0), scan_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def get_findings(scan_id: int, category: str | None = None) -> list[dict]:
