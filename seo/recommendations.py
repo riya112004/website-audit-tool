@@ -75,7 +75,7 @@ RECOMMENDATIONS = {
         "Fix or remove pages returning HTTP 4xx/5xx errors. Broken pages waste "
         "crawl budget, create dead ends for users, and hurt ranking."
     ),
-    "not_https": (
+    "missing_ssl": (
         "Migrate all pages to HTTPS. HTTPS is a confirmed Google ranking signal "
         "and required for browser security indicators and modern web features."
     ),

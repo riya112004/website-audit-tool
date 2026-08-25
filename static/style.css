@@ -151,3 +151,25 @@ tr:hover { background: var(--surface2); }
 .bar-seo { background: #34d399; }
 .bar-seo-bg { background: linear-gradient(90deg, #059669, #34d399, #6ee7b7); }
 .seo-score-card { border-left: 4px solid #34d399; }
+
+/* Accessibility (axe-core) card */
+.a11y-axe-card { border-left: 4px solid #f97316; }
+.a11y-axe-summary { margin-bottom: 16px; }
+.a11y-axe-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.a11y-axe-badges .badge { font-size: 11px; padding: 3px 10px; }
+.badge-high { background: #ef444418; color: var(--red); }
+.badge-medium { background: #eab30818; color: var(--yellow); }
+.badge-low { background: #6b6b7618; color: var(--dim); }
+
+/* Technology Stack card */
+.techstack-card { border-left: 4px solid #8b5cf6; }
+.techstack-grid { display: flex; flex-direction: column; gap: 16px; }
+.techstack-group h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); margin-bottom: 8px; }
+.techstack-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.techstack-tag { font-size: 11px; padding: 3px 10px; border-radius: 12px; font-weight: 600; background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.techstack-tag.tag-frontend { background: #7c3aed18; color: #a78bfa; border-color: #7c3aed30; }
+.techstack-tag.tag-cms { background: #22c55e18; color: var(--green); border-color: #22c55e30; }
+.techstack-tag.tag-backend { background: #eab30818; color: var(--yellow); border-color: #eab30830; }
+.techstack-tag.tag-analytics { background: #06b6d418; color: var(--cyan); border-color: #06b6d430; }
+.techstack-tag.tag-cdn { background: #f9731618; color: #f97316; border-color: #f9731630; }
+.techstack-tag.tag-libraries { background: #ec489918; color: #ec4899; border-color: #ec489930; }

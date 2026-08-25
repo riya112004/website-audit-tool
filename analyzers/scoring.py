@@ -5,16 +5,19 @@ are combined into an overall score: overall = ui * 0.3 + ux * 0.3 + seo * 0.4.
 """
 
 # ─── UI Scoring Weights (total = 100) ──────────────────────
+# 5 categories per industry-standard UI audit:
+#   visual_hierarchy    20%  — headings, H1, section separation, above-fold
+#   layout_spacing      20%  — margins, padding, alignment, overflow, responsive
+#   typography_color    15%  — fonts, sizes, color contrast, readability
+#   components          20%  — buttons, cards, images, visual clutter
+#   usability           25%  — CTAs, interactions, forms, keyboard, tap targets
 
 UI_WEIGHTS = {
     "visual_hierarchy": 20,
-    "typography": 10,
-    "color_consistency": 10,
-    "spacing_layout": 15,
-    "component_consistency": 15,
-    "cta_design": 10,
-    "imagery": 10,
-    "overall_polish": 10,
+    "layout_spacing": 20,
+    "typography_color": 15,
+    "components": 20,
+    "usability": 25,
 }
 
 # ─── UX Scoring Weights (total = 100) ──────────────────────
@@ -30,33 +33,44 @@ UX_WEIGHTS = {
 }
 
 # ─── UI Check → Category ───────────────────────────────────
+# Maps every check_name emitted by ui_analyzer.py to its category.
+# Unmapped checks fall back to "components" in _score_categories().
 
 UI_CHECK_TO_CATEGORY = {
-    "weak_visual_hierarchy": "visual_hierarchy",
-    "heading_count_imbalance": "visual_hierarchy",
+    # ── VISUAL HIERARCHY (20%) ─────────────────────────────
+    # H1 / heading structure
     "no_h1_found": "visual_hierarchy",
-    "inconsistent_font_sizes": "typography",
-    "small_text_detected": "typography",
-    "excessive_font_variations": "typography",
-    "color_inconsistency": "color_consistency",
-    "low_contrast_detected": "color_consistency",
-    "too_many_colors": "color_consistency",
-    "crowded_layout": "spacing_layout",
-    "excessive_whitespace": "spacing_layout",
-    "tight_line_spacing": "spacing_layout",
-    "inconsistent_margins": "spacing_layout",
-    "inconsistent_button_styles": "component_consistency",
-    "inconsistent_card_styles": "component_consistency",
-    "mixed_ui_patterns": "component_consistency",
-    "too_many_ctas": "cta_design",
-    "weak_cta_text": "cta_design",
-    "cta_placement_poor": "cta_design",
-    "no_alt_text_images": "imagery",
-    "broken_images": "imagery",
-    "images_without_dimensions": "imagery",
-    "visual_clutter": "overall_polish",
-    "no_favicon": "overall_polish",
-    "missing_meta_viewport": "overall_polish",
+    "heading_count_imbalance": "visual_hierarchy",
+    # Overall hierarchy scoring (multiple severity variants)
+    "weak_visual_hierarchy": "visual_hierarchy",
+
+    # ── LAYOUT & SPACING (20%) ─────────────────────────────
+    "crowded_layout": "layout_spacing",
+    "excessive_whitespace": "layout_spacing",
+
+    # ── TYPOGRAPHY & COLOR (15%) ───────────────────────────
+    # Typography
+    "small_text_detected": "typography_color",
+    "excessive_font_variations": "typography_color",
+    "inconsistent_font_sizes": "typography_color",
+    # Color
+    "color_inconsistency": "typography_color",
+    "too_many_colors": "typography_color",
+
+    # ── COMPONENTS & CONSISTENCY (20%) ─────────────────────
+    "inconsistent_button_styles": "components",
+    "mixed_ui_patterns": "components",
+    "broken_images": "components",
+    "no_alt_text_images": "components",
+    "images_without_dimensions": "components",
+    "visual_clutter": "components",
+    "no_favicon": "components",
+
+    # ── USABILITY & INTERACTION (25%) ──────────────────────
+    "too_many_ctas": "usability",
+    "weak_cta_text": "usability",
+    "no_primary_cta": "usability",
+    "missing_meta_viewport": "usability",
 }
 
 # ─── UX Check → Category ───────────────────────────────────
@@ -101,117 +115,145 @@ UX_CHECK_TO_CATEGORY = {
 }
 
 # ─── SEO Scoring Weights (total = 100) ─────────────────────
+# 6 categories per industry-standard SEO audit structure:
+#   technical  25%  — crawling, indexing, infrastructure
+#   onpage     30%  — titles, descriptions, headings, images, OG/social
+#   content    15%  — content quality, relevance, depth
+#   schema     10%  — structured data / JSON-LD
+#   performance 15% — Core Web Vitals (LCP, CLS, TTFB)
+#   mobile      5%  — mobile viewport, mobile-friendliness
 
 SEO_WEIGHTS = {
-    "meta_tags": 20,
-    "headings": 20,
+    "technical": 25,
+    "onpage": 30,
     "content": 15,
-    "images": 15,
-    "links": 15,
-    "technical": 15,
+    "schema": 10,
+    "performance": 15,
+    "mobile": 5,
 }
 
 # ─── SEO Check → Category ──────────────────────────────────
+# Maps every check_name emitted by seo_checker.py to its category.
+# Unmapped checks fall back to "onpage" in _score_categories().
 
 SEO_CHECK_TO_CATEGORY = {
-    "missing_title": "meta_tags",
-    "duplicate_title": "meta_tags",
-    "long_title": "meta_tags",
-    "short_title": "meta_tags",
-    "title_no_keyword_relevance": "meta_tags",
-    "weak_title_ctr": "meta_tags",
-    "title_keyword_stuffing": "meta_tags",
-    "missing_meta_description": "meta_tags",
-    "duplicate_meta_description": "meta_tags",
-    "long_meta_description": "meta_tags",
-    "short_meta_description": "meta_tags",
-    "desc_no_keyword_relevance": "meta_tags",
-    "weak_desc_ctr": "meta_tags",
-    "desc_keyword_stuffing": "meta_tags",
-    "missing_canonical": "meta_tags",
-    "empty_canonical": "meta_tags",
-    "canonical_wrong_domain": "meta_tags",
-    "canonical_not_self_referencing": "meta_tags",
-    "canonical_url_mismatch": "meta_tags",
-    "duplicate_canonical": "meta_tags",
-    "missing_h1": "headings",
-    "multiple_h1": "headings",
-    "heading_order_broken": "headings",
-    "missing_h2": "headings",
-    "repeated_headings": "headings",
-    "empty_headings": "headings",
-    "thin_content": "content",
-    "duplicate_content": "content",
-    "keyword_stuffing": "content",
-    "non_descriptive_link_text": "content",
-    "low_title_content_relevance": "content",
-    "thin_content_page": "content",
-    "short_content_page": "content",
-    "scattered_topic": "content",
-    "images_missing_alt": "images",
-    "generic_alt_text": "images",
-    "images_duplicate_alt": "images",
-    "large_images": "images",
-    "broken_links": "links",
-    "external_nofollow_links": "links",
-    "orphan_pages": "links",
-    "deep_link_depth": "links",
-    "excessive_link_depth": "links",
-    "thin_internal_links": "links",
-    "no_structured_data": "technical",
-    "invalid_schema": "technical",
-    "schema_no_type": "technical",
-    "schema_wrong_type": "technical",
-    "schema_incomplete": "technical",
-    "schema_empty_values": "technical",
+    # ── TECHNICAL (25%) ────────────────────────────────────
+    # HTTPS
+    "missing_ssl": "technical",
+    # canonical
+    "missing_canonical": "technical",
+    "empty_canonical": "technical",
+    "invalid_canonical": "technical",
+    "canonical_wrong_domain": "technical",
+    "canonical_not_self_referencing": "technical",
+    "canonical_url_mismatch": "technical",
+    "canonical_noindex_conflict": "technical",
+    # robots / sitemap
     "missing_robots_txt": "technical",
-    "missing_sitemap": "technical",
     "blocked_robots_txt": "technical",
-    "blocked_sitemap": "technical",
     "error_robots_txt": "technical",
+    "missing_sitemap": "technical",
+    "blocked_sitemap": "technical",
     "error_sitemap": "technical",
     "no_sitemap_in_robots": "technical",
     "declared_sitemap_not_found": "technical",
     "declared_sitemap_error": "technical",
     "declared_sitemap_unreachable": "technical",
     "large_sitemap_index": "technical",
-    "poor_lcp": "technical",
-    "slow_lcp": "technical",
-    "high_avg_lcp": "technical",
-    "poor_cls": "technical",
-    "moderate_cls": "technical",
-    "high_avg_cls": "technical",
-    "slow_page_speed": "technical",
-    "mobile_unfriendly": "technical",
-    "missing_ssl": "technical",
-    "crawl_error": "technical",
-    "server_error": "technical",
-
-    # indexability
+    # indexability / noindex / nofollow
     "meta_noindex": "technical",
     "meta_nofollow": "technical",
     "meta_nosnippet": "technical",
     "meta_max_snippet_zero": "technical",
     "x_robots_noindex": "technical",
-    "canonical_noindex_conflict": "technical",
     "internal_nofollow_links": "technical",
+    # redirects / crawl
     "redirect_chain": "technical",
+    "crawl_failed": "technical",
+    "crawl_access_blocked": "technical",
+    "page_not_found": "technical",
+    "server_error": "technical",
+    "crawl_error": "technical",
+    # links
+    "broken_link": "technical",
+    "orphan_pages": "technical",
+    "deep_link_depth": "technical",
+    "excessive_link_depth": "technical",
+    "thin_internal_links": "technical",
 
+    # ── ON-PAGE (30%) ──────────────────────────────────────
+    # title
+    "missing_title": "onpage",
+    "duplicate_title": "onpage",
+    "long_title": "onpage",
+    "short_title": "onpage",
+    "title_no_keyword_relevance": "onpage",
+    "weak_title_ctr": "onpage",
+    "title_keyword_stuffing": "onpage",
+    # meta description
+    "missing_meta_description": "onpage",
+    "duplicate_meta_description": "onpage",
+    "long_meta_description": "onpage",
+    "short_meta_description": "onpage",
+    "desc_no_keyword_relevance": "onpage",
+    "weak_desc_ctr": "onpage",
+    "desc_keyword_stuffing": "onpage",
+    # headings
+    "missing_h1": "onpage",
+    "multiple_h1s": "onpage",
+    "heading_order_broken": "onpage",
+    "repeated_headings": "onpage",
+    "empty_headings": "onpage",
+    "missing_h2": "onpage",
+    # images
+    "images_missing_alt": "onpage",
+    "generic_alt_text": "onpage",
+    "large_images": "onpage",
+    # links
+    "non_descriptive_link_text": "onpage",
     # open graph / social
-    "missing_open_graph": "meta_tags",
-    "incomplete_open_graph": "meta_tags",
-    "weak_og_title": "meta_tags",
-    "weak_og_description": "meta_tags",
-    "invalid_og_image": "meta_tags",
-    "og_title_not_customized": "meta_tags",
-    "og_description_not_customized": "meta_tags",
-    "missing_og_type": "meta_tags",
-    "missing_twitter_card": "meta_tags",
-    "invalid_twitter_card_type": "meta_tags",
-    "missing_twitter_title": "meta_tags",
-    "missing_twitter_description": "meta_tags",
-    "missing_twitter_image": "meta_tags",
-    "missing_twitter_site": "meta_tags",
+    "missing_open_graph": "onpage",
+    "incomplete_open_graph": "onpage",
+    "weak_og_title": "onpage",
+    "weak_og_description": "onpage",
+    "invalid_og_image": "onpage",
+    "og_title_not_customized": "onpage",
+    "og_description_not_customized": "onpage",
+    "missing_og_type": "onpage",
+    "missing_twitter_card": "onpage",
+    "invalid_twitter_card_type": "onpage",
+    "missing_twitter_title": "onpage",
+    "missing_twitter_description": "onpage",
+    "missing_twitter_image": "onpage",
+    "missing_twitter_site": "onpage",
+
+    # ── CONTENT (15%) ──────────────────────────────────────
+    "duplicate_content": "content",
+    "low_title_content_relevance": "content",
+    "thin_content_page": "content",
+    "short_content_page": "content",
+    "scattered_topic": "content",
+
+    # ── SCHEMA (10%) ───────────────────────────────────────
+    "no_structured_data": "schema",
+    "invalid_schema": "schema",
+    "schema_no_type": "schema",
+    "schema_wrong_type": "schema",
+    "schema_incomplete": "schema",
+    "schema_empty_values": "schema",
+
+    # ── PERFORMANCE (15%) ──────────────────────────────────
+    "poor_lcp": "performance",
+    "slow_lcp": "performance",
+    "high_avg_lcp": "performance",
+    "poor_cls": "performance",
+    "moderate_cls": "performance",
+    "high_avg_cls": "performance",
+    "slow_page_speed": "performance",
+
+    # ── MOBILE (5%) ────────────────────────────────────────
+    "missing_viewport": "mobile",
+    "mobile_unfriendly": "mobile",
 }
 
 # ─── Duplicate Issue Groups ────────────────────────────────
@@ -220,8 +262,6 @@ SEO_CHECK_TO_CATEGORY = {
 
 DUPLICATE_GROUPS = {
     "images_missing_alt": {"no_alt_text_images", "missing_alt_text", "image_missing_alt"},
-    # Add more groups here as needed, e.g.:
-    # "broken_links": {"broken_links", "dead_links"},
 }
 
 # Build flat set of all duplicate (non-canonical) check names
@@ -234,12 +274,12 @@ for canonical, dupes in DUPLICATE_GROUPS.items():
 # Recommendation-level: things to consider, not errors.
 
 SEO_SCORING_IGNORE = {
-    # canonical — informational only
+    # canonical — informational only (not every page needs self-ref canonical)
     "missing_canonical",
     "empty_canonical",
     "canonical_url_mismatch",
 
-    # weak CTR — not reliable SEO rule
+    # weak CTR — not a reliable SEO rule
     "weak_title_ctr",
     "weak_desc_ctr",
 
@@ -250,7 +290,7 @@ SEO_SCORING_IGNORE = {
     "og_title_not_customized",
     "og_description_not_customized",
 
-    # twitter — social metadata, not SEO-critical
+    # twitter/social — social metadata, not SEO-critical
     "missing_twitter_site",
     "missing_twitter_title",
     "missing_twitter_description",
@@ -276,123 +316,105 @@ SEO_SCORING_IGNORE = {
 
 # ─── Per-Check Custom Penalties (overrides severity-based) ──
 # key = check_name, value = penalty points (0 = no penalty)
+# Severity reference: critical=10, high=5, medium=3, low=1
 
 SEO_CHECK_PENALTIES = {
-    # ── CRITICAL — must fix, directly impacts ranking ──────
-    # meta_tags — critical SEO elements
-    "missing_title": 18,
-    "missing_meta_description": 10,
-    "duplicate_title": 8,
-    "duplicate_meta_description": 6,
-    "title_keyword_stuffing": 5,
-    "desc_keyword_stuffing": 4,
-
-    # canonical — conflicts hurt indexing
-    "canonical_not_self_referencing": 6,
-    "canonical_wrong_domain": 8,
-    "canonical_noindex_conflict": 12,
-
-    # headings — H1 is critical
-    "missing_h1": 15,
-
-    # content
-    "thin_content": 12,
-    "duplicate_content": 8,
-    "keyword_stuffing": 6,
-
-    # indexability — directly blocks indexing
-    "meta_noindex": 15,
-    "meta_nofollow": 10,
+    # ── TECHNICAL ──────────────────────────────────────────
+    # Critical — directly blocks indexing / crawling
+    "missing_ssl": 10,
+    "canonical_noindex_conflict": 10,
+    "meta_noindex": 10,
+    "crawl_failed": 10,
+    "crawl_access_blocked": 10,
+    "page_not_found": 8,
+    "server_error": 8,
+    "crawl_error": 8,
+    # High
+    "canonical_wrong_domain": 5,
+    "canonical_not_self_referencing": 5,
+    "meta_nofollow": 5,
     "internal_nofollow_links": 5,
+    "broken_link": 5,
+    "redirect_chain": 5,
+    "missing_robots_txt": 5,
+    "missing_sitemap": 5,
+    # Medium
+    "x_robots_noindex": 3,
+    "orphan_pages": 3,
+    "excessive_link_depth": 3,
+    "declared_sitemap_not_found": 3,
+    "declared_sitemap_error": 3,
+    "declared_sitemap_unreachable": 3,
+    # Low
+    "deep_link_depth": 1,
+    "thin_internal_links": 1,
 
-    # links
-    "broken_links": 10,
-
-    # technical
-    "missing_viewport": 6,
-
-    # images — accessibility + SEO
-    "images_missing_alt": 6,
-
-    # ── WARNING — should fix, affects quality ──────────────
-    # headings
-    "multiple_h1": 3,
-    "heading_order_broken": 2,
+    # ── ON-PAGE ────────────────────────────────────────────
+    # Critical — directly impacts ranking
+    "missing_title": 10,
+    "missing_meta_description": 8,
+    "missing_h1": 10,
+    # High
+    "duplicate_title": 5,
+    "duplicate_meta_description": 5,
+    "title_keyword_stuffing": 5,
+    "desc_keyword_stuffing": 5,
+    "images_missing_alt": 5,
+    "missing_open_graph": 3,
+    # Medium
+    "multiple_h1s": 3,
+    "heading_order_broken": 3,
     "repeated_headings": 3,
-    "empty_headings": 2,
-
-    # content
-    "non_descriptive_link_text": 2,
-
-    # images
+    "long_title": 3,
+    "short_title": 3,
+    "long_meta_description": 3,
+    "short_meta_description": 3,
     "generic_alt_text": 3,
-    "images_duplicate_alt": 3,
+    "large_images": 3,
+    "non_descriptive_link_text": 3,
+    "incomplete_open_graph": 3,
+    "invalid_og_image": 3,
+    "missing_twitter_card": 3,
+    "invalid_twitter_card_type": 3,
+    "missing_h2": 3,
+    # Low
+    "empty_headings": 1,
+    "title_no_keyword_relevance": 1,
+    "desc_no_keyword_relevance": 1,
+    "weak_og_title": 1,
+    "weak_og_description": 1,
 
-    # links
-    "orphan_pages": 4,
-    "excessive_link_depth": 5,
+    # ── CONTENT ────────────────────────────────────────────
+    # High
+    "duplicate_content": 5,
+    "low_title_content_relevance": 5,
+    "thin_content_page": 5,
 
-    # technical / schema
-    "invalid_schema": 5,
+    # ── SCHEMA ─────────────────────────────────────────────
+    # Medium — nice to have, not critical
+    "invalid_schema": 3,
     "schema_no_type": 3,
     "schema_incomplete": 3,
-    "schema_empty_values": 2,
-    "slow_page_speed": 8,
+    "schema_empty_values": 3,
+    # Low
+    "schema_wrong_type": 1,
 
-    # core web vitals
-    "poor_lcp": 8,
-    "slow_lcp": 4,
-    "high_avg_lcp": 6,
-    "poor_cls": 8,
-    "moderate_cls": 4,
-    "high_avg_cls": 6,
+    # ── PERFORMANCE ────────────────────────────────────────
+    # High
+    "poor_lcp": 5,
+    "poor_cls": 5,
+    "slow_page_speed": 5,
+    # Medium
+    "slow_lcp": 3,
+    "high_avg_lcp": 3,
+    "moderate_cls": 3,
+    "high_avg_cls": 3,
 
-    # sitemap
-    "declared_sitemap_not_found": 5,
-    "declared_sitemap_error": 4,
-    "declared_sitemap_unreachable": 3,
-
-    # content seo
-    "low_title_content_relevance": 5,
-    "thin_content_page": 6,
-
-    # open graph
-    "missing_open_graph": 5,
-    "incomplete_open_graph": 2,
-    "missing_twitter_card": 3,
-
-    # redirect
-    "redirect_chain": 3,
-
-    # ── RECOMMENDATION — optional improvements ─────────────
-    # (These should have penalty=0 or very low, mostly in SEO_SCORING_IGNORE)
-    # schema_wrong_type is informational — Corporation is valid
-    "schema_wrong_type": 0,
-    # missing_h2 is nice-to-have
-    "missing_h2": 3,
-    # long/short titles — minor optimization
-    "long_title": 2,
-    "short_title": 2,
-    "long_meta_description": 2,
-    "short_meta_description": 2,
-    # keyword relevance — soft signal
-    "title_no_keyword_relevance": 3,
-    "desc_no_keyword_relevance": 2,
-    # OG/Twitter — social optimization
-    "weak_og_title": 2,
-    "weak_og_description": 2,
-    "invalid_og_image": 3,
-    "invalid_twitter_card_type": 2,
-    # images
-    "large_images": 2,
-    # links
-    "external_nofollow_links": 1,
-    # robots
-    "x_robots_noindex": 8,
-    # misc
-    "declared_sitemap_not_found": 4,
-    "declared_sitemap_error": 3,
-    "declared_sitemap_unreachable": 2,
+    # ── MOBILE ─────────────────────────────────────────────
+    # Critical
+    "missing_viewport": 5,
+    # High
+    "mobile_unfriendly": 5,
 }
 
 # ─── Severity Penalties ────────────────────────────────────
@@ -414,11 +436,57 @@ SEVERITY_RANK = {"critical": 4, "high": 3, "warning": 2, "medium": 2, "low": 1, 
 # ─── Scoring Ignore Sets (informational only, no penalty) ──
 
 UI_SCORING_IGNORE = {
-    "no_loading_feedback",  # Not tested from static HTML
+    "no_favicon",  # Nice to have, not a UI issue
 }
 
 UX_SCORING_IGNORE = {
     "no_loading_feedback",  # Not tested from static HTML
+}
+
+# ─── UI Per-Check Penalties (overrides severity-based) ─────
+# Severity reference: critical=10, high=6, medium=3, low=1
+
+UI_CHECK_PENALTIES = {
+    # ── VISUAL HIERARCHY ───────────────────────────────────
+    # Critical — H1 is essential
+    "no_h1_found": 10,
+    # High
+    "heading_count_imbalance": 6,
+    "weak_visual_hierarchy": 6,
+
+    # ── LAYOUT & SPACING ──────────────────────────────────
+    # Medium
+    "crowded_layout": 3,
+    # Low
+    "excessive_whitespace": 1,
+
+    # ── TYPOGRAPHY & COLOR ────────────────────────────────
+    # Medium
+    "small_text_detected": 3,
+    "excessive_font_variations": 3,
+    "color_inconsistency": 3,
+    "too_many_colors": 3,
+    # Low
+    "inconsistent_font_sizes": 1,
+
+    # ── COMPONENTS & CONSISTENCY ──────────────────────────
+    # High
+    "broken_images": 6,
+    # Medium
+    "inconsistent_button_styles": 3,
+    "mixed_ui_patterns": 3,
+    "no_alt_text_images": 3,
+    "visual_clutter": 3,
+    # Low
+    "images_without_dimensions": 1,
+
+    # ── USABILITY & INTERACTION ───────────────────────────
+    # High
+    "no_primary_cta": 6,
+    "missing_meta_viewport": 6,
+    # Medium
+    "too_many_ctas": 3,
+    "weak_cta_text": 3,
 }
 
 
@@ -468,25 +536,33 @@ def compute_finding_confidence(finding: dict, total_pages: int) -> float:
     return round(max(0.1, min(max_confidence, confidence)), 2)
 
 
-def compute_finding_penalty(finding: dict) -> float:
-    """Compute score penalty for a finding based on severity, confidence, and violation count.
+def compute_finding_penalty(finding: dict, check_penalty: float = None) -> float:
+    """Compute score penalty for a finding based on check-specific or severity-based penalty.
     
-    Uses diminishing returns for high violation counts (100 issues ≠ 10× worse than 10).
-    But ensures critical/high severity findings have meaningful impact.
+    Priority:
+      1. check_penalty (from SEO_CHECK_PENALTIES / UI / UX check_penalties) — most accurate
+      2. SEVERITY_PENALTY[severity] — fallback when no custom penalty defined
+    
+    Violation multiplier is very gentle — scale only:
+      1 issue = 1.0×, 10 = 1.1×, 100 = 1.2×
     """
     severity = finding.get("severity", "info")
     confidence = finding.get("confidence", 0.8)
     violations = finding.get("total_violations", 1)
 
-    base_penalty = SEVERITY_PENALTY.get(severity, 0)
+    # Use check-specific penalty if available, otherwise fall back to severity
+    if check_penalty is not None:
+        base_penalty = check_penalty
+    else:
+        base_penalty = SEVERITY_PENALTY.get(severity, 0)
 
-    # Diminishing returns: sqrt scale for violation count
-    # 1 violation = 1.0×, 5 = 1.6×, 10 = 2.0×, 50 = 3.2×, 100 = 4.0×
+    # Very gentle diminishing returns: log2 scale
+    # 1 = 1.0×, 10 = 1.1×, 100 = 1.2×
     import math
-    violation_factor = 1.0 + math.sqrt(max(1, violations)) * 0.3
+    violation_factor = 1.0 + math.log2(max(1, violations)) * 0.03
 
     penalty = base_penalty * confidence * violation_factor
-    return round(penalty, 2)  # No cap — let critical issues have real impact
+    return round(penalty, 2)
 
 
 def validate_findings(findings: list[dict]) -> list[dict]:
@@ -514,7 +590,8 @@ def validate_findings(findings: list[dict]) -> list[dict]:
     return validated
 
 
-def aggregate_findings(findings: list[dict], total_pages: int) -> list[dict]:
+def aggregate_findings(findings: list[dict], total_pages: int,
+                       check_penalties: dict = None) -> list[dict]:
     """Step 2: Aggregate same-issue findings across pages into single enriched findings.
     
     Groups by check_name. For each group:
@@ -522,8 +599,9 @@ def aggregate_findings(findings: list[dict], total_pages: int) -> list[dict]:
     - total_violations: sum of all instances
     - severity: highest severity across all instances
     - confidence: computed from severity + page coverage
-    - penalty: computed from severity + confidence + violations
+    - penalty: computed using check-specific penalty (if available) or severity fallback
     
+    check_penalties: optional dict mapping check_name → custom penalty (e.g. SEO_CHECK_PENALTIES).
     Returns list of enriched finding dicts (one per unique check_name).
     """
     groups: dict[str, list[dict]] = {}
@@ -559,7 +637,10 @@ def aggregate_findings(findings: list[dict], total_pages: int) -> list[dict]:
 
         # Compute confidence and penalty
         enriched["confidence"] = compute_finding_confidence(enriched, total_pages)
-        enriched["penalty"] = compute_finding_penalty(enriched)
+
+        # Use check-specific penalty if available
+        custom_penalty = check_penalties.get(check_name) if check_penalties else None
+        enriched["penalty"] = compute_finding_penalty(enriched, check_penalty=custom_penalty)
 
         aggregated.append(enriched)
 
@@ -611,19 +692,25 @@ def _score_categories(
 
     category_scores: dict[str, int] = {}
     cat_penalties: dict[str, int] = {cat: 0 for cat in weights}
+
+    # Deduplicate: each unique check_name contributes its penalty ONCE
+    seen_checks: set = set()
     for f in findings:
         check_name = f.get("check_name", "")
         if scoring_ignore and check_name in scoring_ignore:
             continue
+        if check_name in seen_checks:
+            continue
         cat = check_to_category.get(check_name)
         if not cat:
             continue
+        seen_checks.add(check_name)
 
-        # Use pre-computed penalty from enriched finding if available
-        if "penalty" in f:
-            cat_penalties[cat] += f["penalty"]
-        elif check_penalties and check_name in check_penalties:
+        # Priority: check_penalties > pre-computed penalty > severity fallback
+        if check_penalties and check_name in check_penalties:
             cat_penalties[cat] += check_penalties[check_name]
+        elif "penalty" in f:
+            cat_penalties[cat] += f["penalty"]
         else:
             sev = f.get("severity", "info")
             cat_penalties[cat] += SEVERITY_PENALTY.get(sev, 0)
@@ -675,7 +762,7 @@ def compute_ui_score(ui_findings: list[dict], vh_score: int = None,
     """
     category_scores, cat_counts = _score_categories(
         ui_findings, UI_CHECK_TO_CATEGORY, UI_WEIGHTS,
-        scoring_ignore=UI_SCORING_IGNORE)
+        scoring_ignore=UI_SCORING_IGNORE, check_penalties=UI_CHECK_PENALTIES)
     
     if vh_score is not None:
         category_scores["visual_hierarchy"] = max(0, min(100, vh_score))

@@ -194,9 +194,24 @@ async def scan_detail(request: Request, scan_id: int):
         "grade": _grade(scan.get("overall_score", 0)),
     }
 
+    # Accessibility (axe-core) results
+    a11y_axe_findings = db.get_findings(scan_id, "accessibility")
+    a11y_axe_summary = db.get_findings_summary(scan_id).get("accessibility", {})
+    a11y_axe_grouped = {}
+    for f in a11y_axe_findings:
+        name = f["check_name"]
+        if name not in a11y_axe_grouped:
+            a11y_axe_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
+        a11y_axe_grouped[name]["issues"].append(f)
+
+    # Tech stack
+    from techstack import get_tech_from_db
+    tech_stack = get_tech_from_db(scan_id)
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
+        "total_pages": len(pages),
         "edges": edges,
         "diff": diff,
         "page_details": page_details,
@@ -216,6 +231,10 @@ async def scan_detail(request: Request, scan_id: int):
         "a11y_summary": a11y_summary,
         "a11y_grouped": a11y_grouped,
         "vision_findings": vision_findings,
+        "a11y_axe_findings": a11y_axe_findings,
+        "a11y_axe_summary": a11y_axe_summary,
+        "a11y_axe_grouped": a11y_axe_grouped,
+        "tech_stack": tech_stack,
         "overall_score_data": overall_score_data,
     })
 
@@ -260,3 +279,23 @@ async def api_scan_progress(scan_id: int):
         "findings_count": len(findings),
         "seo_summary": seo_summary,
     })
+
+
+@app.get("/api/scan/{scan_id}/accessibility")
+async def api_scan_accessibility(scan_id: int):
+    scan = db.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    findings = db.get_findings(scan_id, "accessibility")
+    summary = db.get_findings_summary(scan_id).get("accessibility", {})
+    return JSONResponse({"findings": [dict(f) for f in findings], "summary": summary})
+
+
+@app.get("/api/scan/{scan_id}/techstack")
+async def api_scan_techstack(scan_id: int):
+    scan = db.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    from techstack import get_tech_from_db
+    tech = get_tech_from_db(scan_id)
+    return JSONResponse(tech)

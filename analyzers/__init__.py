@@ -23,7 +23,7 @@ from analyzers.vision_analyzer import analyze_visual
 from analyzers.scoring import (
     compute_ui_score, compute_ux_score, compute_seo_score, compute_overall_score,
     validate_findings, aggregate_findings,
-    UI_WEIGHTS, UX_WEIGHTS, SEO_WEIGHTS,
+    UI_WEIGHTS, UX_WEIGHTS, SEO_WEIGHTS, SEO_CHECK_PENALTIES, UI_CHECK_PENALTIES,
 )
 
 
@@ -71,16 +71,18 @@ def _clear_old_findings(scan_id: int) -> None:
     conn.close()
 
 
-def _process_findings(raw_findings: list[dict], total_pages: int) -> list[dict]:
+def _process_findings(raw_findings: list[dict], total_pages: int,
+                      check_penalties: dict = None) -> list[dict]:
     """Full pipeline: validate → aggregate → enrich findings.
     
     Returns enriched findings with confidence, affected_pages, total_violations, penalty.
+    check_penalties: optional dict mapping check_name → custom penalty (e.g. SEO_CHECK_PENALTIES).
     """
     # Step 1: Remove info-level, duplicates, false positives
     validated = validate_findings(raw_findings)
 
     # Step 2: Aggregate same-issue findings across pages
-    aggregated = aggregate_findings(validated, total_pages)
+    aggregated = aggregate_findings(validated, total_pages, check_penalties=check_penalties)
 
     return aggregated
 
@@ -155,7 +157,8 @@ def run_analyzers(scan_id: int) -> dict:
     # SEO: keep ALL raw findings (including info/recommendations) for report
     # But only score non-info findings
     seo_findings_raw = db.get_findings(scan_id, "seo")
-    seo_findings_scored = _process_findings(seo_findings_raw, total_pages)  # for scoring only
+    seo_findings_scored = _process_findings(seo_findings_raw, total_pages,
+                                            check_penalties=SEO_CHECK_PENALTIES)  # for scoring only
 
     # Vision: keep raw (LLM findings are already validated by the model)
     vision_findings = vision_findings_raw

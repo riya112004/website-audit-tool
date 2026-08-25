@@ -767,7 +767,7 @@ def check_link_text(scan_id: int, pages: list[dict]):
 def check_https(scan_id: int, pages: list[dict]):
     for p in pages:
         if not p["url"].startswith("https://"):
-            _add(scan_id, "not_https", "warning",
+            _add(scan_id, "missing_ssl", "warning",
                  f"Not HTTPS: {p['url']}",
                  page_id=p["id"])
 
