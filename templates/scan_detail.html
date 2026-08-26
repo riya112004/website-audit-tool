@@ -132,67 +132,39 @@
             <span class="breakdown-val">{{ seo_score_data.seo_score }}</span>
             <span class="breakdown-grade">{{ seo_score_data.grade }}</span>
           </div>
+          {% if mobile_score_data %}
+          <div class="breakdown-row">
+            <span class="breakdown-label">Mobile Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-mobile" style="width:{{ mobile_score_data.mobile_score }}%"></div></div>
+            <span class="breakdown-val">{{ mobile_score_data.mobile_score }}</span>
+            <span class="breakdown-grade">{{ mobile_score_data.grade }}</span>
+          </div>
+          {% endif %}
+          {% if mf_score_data %}
+          <div class="breakdown-row">
+            <span class="breakdown-label">Features Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-features" style="width:{{ mf_score_data.missing_features_score }}%"></div></div>
+            <span class="breakdown-val">{{ mf_score_data.missing_features_score }}</span>
+            <span class="breakdown-grade">{{ mf_score_data.grade }}</span>
+          </div>
+          {% endif %}
+          {% if cta_score_data %}
+          <div class="breakdown-row">
+            <span class="breakdown-label">CTA Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-cta" style="width:{{ cta_score_data.cta_score }}%"></div></div>
+            <span class="breakdown-val">{{ cta_score_data.cta_score }}</span>
+            <span class="breakdown-grade">{{ cta_score_data.grade }}</span>
+          </div>
+          {% endif %}
+          {% if sec_score_data %}
+          <div class="breakdown-row">
+            <span class="breakdown-label">Security Score</span>
+            <div class="breakdown-bar-bg"><div class="breakdown-bar bar-security" style="width:{{ sec_score_data.security_score }}%"></div></div>
+            <span class="breakdown-val">{{ sec_score_data.security_score }}</span>
+            <span class="breakdown-grade">{{ sec_score_data.grade }}</span>
+          </div>
+          {% endif %}
         </div>
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- UI SCORE BREAKDOWN -->
-    {% if scan.status == "completed" and ui_score_data and ui_score_data.category_scores %}
-    <div class="card ui-score-card">
-      <h2>UI Score Breakdown</h2>
-      <div class="ux-score-bar-container">
-        <div class="ux-score-bar bar-ui-bg" style="width:{{ ui_score_data.ui_score }}%"></div>
-        <span class="ux-score-text">{{ ui_score_data.ui_score }}/100</span>
-      </div>
-      <div class="ux-category-scores">
-        {% for cat, score in ui_score_data.category_scores.items() %}
-        <div class="ux-cat-row">
-          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
-          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-ui" style="width:{{ score }}%"></div></div>
-          <span class="ux-cat-score">{{ score }}</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- UX SCORE BREAKDOWN -->
-    {% if scan.status == "completed" and ux_score_data and ux_score_data.category_scores %}
-    <div class="card ux-score-card">
-      <h2>UX Score Breakdown</h2>
-      <div class="ux-score-bar-container">
-        <div class="ux-score-bar bar-ux-bg" style="width:{{ ux_score_data.ux_score }}%"></div>
-        <span class="ux-score-text">{{ ux_score_data.ux_score }}/100</span>
-      </div>
-      <div class="ux-category-scores">
-        {% for cat, score in ux_score_data.category_scores.items() %}
-        <div class="ux-cat-row">
-          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
-          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-ux" style="width:{{ score }}%"></div></div>
-          <span class="ux-cat-score">{{ score }}</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- SEO SCORE BREAKDOWN -->
-    {% if scan.status == "completed" and seo_score_data and seo_score_data.category_scores %}
-    <div class="card seo-score-card">
-      <h2>SEO Score Breakdown</h2>
-      <div class="ux-score-bar-container">
-        <div class="ux-score-bar bar-seo-bg" style="width:{{ seo_score_data.seo_score }}%"></div>
-        <span class="ux-score-text">{{ seo_score_data.seo_score }}/100</span>
-      </div>
-      <div class="ux-category-scores">
-        {% for cat, score in seo_score_data.category_scores.items() %}
-        <div class="ux-cat-row">
-          <span class="ux-cat-name">{{ cat|replace('_', ' ')|title }}</span>
-          <div class="ux-cat-bar-bg"><div class="ux-cat-bar bar-seo" style="width:{{ score }}%"></div></div>
-          <span class="ux-cat-score">{{ score }}</span>
-        </div>
-        {% endfor %}
       </div>
     </div>
     {% endif %}
@@ -261,28 +233,28 @@
     </div>
     {% endif %}
 
-    <!-- ACCESSIBILITY FINDINGS -->
-    {% if a11y_findings and scan.status == "completed" %}
+    <!-- ACCESSIBILITY FINDINGS (axe-core) -->
+    {% if a11y_axe_findings and scan.status == "completed" %}
     <div class="card a11y-findings-card">
-      <h2>Accessibility Findings ({{ a11y_findings|length }})</h2>
-      {% for check_name, group in a11y_grouped.items() %}
+      <h2>Accessibility Findings — axe-core ({{ a11y_axe_findings|length }})</h2>
+      {% for check_name, group in a11y_axe_grouped.items() %}
       <details class="finding-row">
         <summary>
           <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
           <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
-          <span class="finding-count">{{ group.issues|length }} page{{ 's' if group.issues|length != 1 }}</span>
+          <span class="finding-count">{{ group.issues|length }}</span>
         </summary>
         <div class="finding-body">
           {% if group.recommendation %}
           <div class="recommendation-box">{{ group.recommendation }}</div>
           {% endif %}
           <table>
-            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <thead><tr><th>Issue</th><th>Details</th></tr></thead>
             <tbody>
               {% for issue in group.issues %}
               <tr>
-                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message }}</td>
-                <td>{{ issue.message.split(':')[0].strip() if ':' in issue.message else '' }}</td>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message[:80] }}</td>
+                <td>{{ issue.message }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -334,6 +306,153 @@
     </div>
     {% elif scan.status == "completed" %}
     <div class="card"><h2>SEO Audit Results</h2><p class="empty">No SEO issues found.</p></div>
+    {% endif %}
+
+    <!-- MOBILE RESPONSIVENESS FINDINGS -->
+    {% if mobile_findings and scan.status == "completed" %}
+    <div class="card mobile-findings-card">
+      <h2>Mobile Responsiveness Findings ({{ mobile_findings|length }})</h2>
+      {% for check_name, group in mobile_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Issue</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split('(')[0].strip() if '(' in issue.message else issue.message[:80] }}</td>
+                <td>{{ issue.message }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- MISSING FEATURES FINDINGS -->
+    {% if mf_findings and scan.status == "completed" %}
+    <div class="card mf-findings-card">
+      <h2>Missing Features Findings ({{ mf_findings|length }})</h2>
+      {% for check_name, group in mf_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Feature</th><th>Message</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ check_name|replace('_', ' ')|title }}</td>
+                <td>{{ issue.message }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- CTA / CONVERSION FINDINGS -->
+    {% if cta_findings and scan.status == "completed" %}
+    <div class="card cta-findings-card">
+      <h2>CTA / Conversion Audit ({{ cta_findings|length }})</h2>
+      {% for check_name, group in cta_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Page</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message.split(':')[-1].strip() if ':' in issue.message else issue.message[:80] }}</td>
+                <td>{{ issue.message }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- SECURITY OBSERVATIONS -->
+    {% if sec_findings and scan.status == "completed" %}
+    <div class="card sec-findings-card">
+      <h2>Security Observations ({{ sec_findings|length }})</h2>
+      {% for check_name, group in sec_grouped.items() %}
+      <details class="finding-row">
+        <summary>
+          <span class="badge badge-severity badge-{{ group.severity }}">{{ group.severity }}</span>
+          <span class="finding-name">{{ check_name|replace('_', ' ')|title }}</span>
+          <span class="finding-count">{{ group.issues|length }}</span>
+        </summary>
+        <div class="finding-body">
+          {% if group.recommendation %}
+          <div class="recommendation-box">{{ group.recommendation }}</div>
+          {% endif %}
+          <table>
+            <thead><tr><th>Observation</th><th>Details</th></tr></thead>
+            <tbody>
+              {% for issue in group.issues %}
+              <tr>
+                <td class="finding-page">{{ issue.message[:100] }}</td>
+                <td>{{ issue.recommendation or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- TECH STACK -->
+    {% if tech_stack and scan.status == "completed" %}
+    <div class="card tech-stack-card">
+      <h2>Detected Tech Stack</h2>
+      <div class="tech-grid">
+        {% for category, items in tech_stack.items() if items %}
+        <div class="tech-category">
+          <h3 class="tech-cat-name">{{ category|replace('_', ' ')|title }}</h3>
+          <div class="tech-tags">
+            {% for item in items %}
+            <span class="tech-tag">{{ item }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
     {% endif %}
 
     <!-- CRAWLED PAGES -->

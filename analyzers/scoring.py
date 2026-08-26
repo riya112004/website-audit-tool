@@ -825,15 +825,15 @@ def compute_seo_score(seo_findings: list[dict], checked_categories: set = None) 
     }
 
 
-def compute_overall_score(ui_score: int, ux_score: int, seo_score: int = 0, mobile_score: int = 0, missing_features_score: int = 0) -> dict:
-    """Combine UI, UX, SEO, Mobile and Missing Features scores into an overall score.
+def compute_overall_score(ui_score: int, ux_score: int, seo_score: int = 0, mobile_score: int = 0, missing_features_score: int = 0, cta_score: int = 0, security_score: int = 0) -> dict:
+    """Combine all scores into an overall score.
 
-    Formula: overall = ui * 0.20 + ux * 0.20 + seo * 0.25 + mobile * 0.15 + missing_features * 0.20
+    Formula: overall = ui*0.12 + ux*0.12 + seo*0.18 + mobile*0.14 + missing_features*0.18 + cta*0.12 + security*0.14
 
     Returns dict with keys:
         overall_score, grade
     """
-    overall_score = round(ui_score * 0.20 + ux_score * 0.20 + seo_score * 0.25 + mobile_score * 0.15 + missing_features_score * 0.20)
+    overall_score = round(ui_score * 0.12 + ux_score * 0.12 + seo_score * 0.18 + mobile_score * 0.14 + missing_features_score * 0.18 + cta_score * 0.12 + security_score * 0.14)
     overall_score = max(0, min(100, overall_score))
 
     return {

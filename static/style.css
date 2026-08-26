@@ -151,6 +151,8 @@ tr:hover { background: var(--surface2); }
 .bar-a11y-bg { background: linear-gradient(90deg, #d97706, #f59e0b, #fcd34d); }
 .bar-cta { background: #f472b6; }
 .cta-findings-card { border-left: 4px solid #f472b6; }
+.bar-security { background: #ef4444; }
+.sec-findings-card { border-left: 4px solid #ef4444; }
 .stat-seo { color: #34d399; }
 .bar-seo { background: #34d399; }
 .bar-seo-bg { background: linear-gradient(90deg, #059669, #34d399, #6ee7b7); }

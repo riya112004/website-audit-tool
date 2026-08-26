@@ -288,6 +288,21 @@ async def scan_detail(request: Request, scan_id: int):
         "grade": _grade(scan.get("cta_score", 0)),
     }
 
+    # Security findings
+    sec_findings = db.get_findings(scan_id, "security")
+    sec_summary = db.get_findings_summary(scan_id).get("security", {})
+    sec_grouped = {}
+    for f in sec_findings:
+        name = f["check_name"]
+        if name not in sec_grouped:
+            sec_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
+        sec_grouped[name]["issues"].append(f)
+
+    sec_score_data = {
+        "security_score": scan.get("security_score", 0),
+        "grade": _grade(scan.get("security_score", 0)),
+    }
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
@@ -329,6 +344,10 @@ async def scan_detail(request: Request, scan_id: int):
         "cta_summary": cta_summary,
         "cta_grouped": cta_grouped,
         "cta_score_data": cta_score_data,
+        "sec_findings": sec_findings,
+        "sec_summary": sec_summary,
+        "sec_grouped": sec_grouped,
+        "sec_score_data": sec_score_data,
     })
 
 

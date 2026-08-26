@@ -27,7 +27,7 @@ def main():
     # Step 1: Crawl
     step_start = time.time()
     print(f"\n{'#'*60}")
-    print(f"  STEP 1/9: CRAWLING")
+    print(f"  STEP 1/10: CRAWLING")
     print(f"{'#'*60}")
     asyncio.run(crawl_site(scan_id))
     step_elapsed = time.time() - step_start
@@ -36,7 +36,7 @@ def main():
     # Step 2: SEO checks (populates findings in DB)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 2/9: SEO CHECKS")
+    print(f"  STEP 2/10: SEO CHECKS")
     print(f"{'#'*60}")
     run_seo_checks(scan_id)
     step_elapsed = time.time() - step_start
@@ -45,7 +45,7 @@ def main():
     # Step 3: All analyzers + ALL scores in one pipeline
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 3/9: UI/UX/SEO ANALYZERS + SCORING")
+    print(f"  STEP 3/10: UI/UX/SEO ANALYZERS + SCORING")
     print(f"{'#'*60}")
     results = run_analyzers(scan_id)
     step_elapsed = time.time() - step_start
@@ -54,7 +54,7 @@ def main():
     # Step 4: Accessibility checks (axe-core)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 4/9: ACCESSIBILITY (axe-core)")
+    print(f"  STEP 4/10: ACCESSIBILITY (axe-core)")
     print(f"{'#'*60}")
     try:
         from accessibility_checks import run_axe_on_pages, save_accessibility_to_db
@@ -71,7 +71,7 @@ def main():
     # Step 5: Mobile responsiveness
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 5/9: MOBILE RESPONSIVENESS")
+    print(f"  STEP 5/10: MOBILE RESPONSIVENESS")
     print(f"{'#'*60}")
     mobile_score = 0
     try:
@@ -96,7 +96,7 @@ def main():
     # Step 6: Technology stack detection
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 6/9: TECH STACK DETECTION")
+    print(f"  STEP 6/10: TECH STACK DETECTION")
     print(f"{'#'*60}")
     try:
         from techstack import detect_tech, save_tech_to_db
@@ -113,7 +113,7 @@ def main():
     # Step 7: Missing features audit
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 7/9: MISSING FEATURES AUDIT")
+    print(f"  STEP 7/10: MISSING FEATURES AUDIT")
     print(f"{'#'*60}")
     missing_features_score = 0
     try:
@@ -142,7 +142,7 @@ def main():
     # Step 8: CTA / Conversion Audit
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 8/9: CTA / CONVERSION AUDIT")
+    print(f"  STEP 8/10: CTA / CONVERSION AUDIT")
     print(f"{'#'*60}")
     cta_score = 0
     try:
@@ -167,7 +167,28 @@ def main():
     step_elapsed = time.time() - step_start
     print(f"  >> Step 8 done in {step_elapsed:.1f}s\n")
 
-    # Step 9: Recompute overall
+    # Step 9: Security Observations
+    step_start = time.time()
+    print(f"{'#'*60}")
+    print(f"  STEP 9/10: SECURITY OBSERVATIONS")
+    print(f"{'#'*60}")
+    security_score = 0
+    try:
+        from security_audit import run_security_audit
+        from security_audit.scoring import score_security_audit
+        sec_result = run_security_audit(pages, page_htmls)
+        sec_scored = score_security_audit(sec_result)
+        db.save_security_findings(scan_id, sec_scored)
+        security_score = sec_scored["security_score"]
+        print(f"[Security] Score: {security_score}/100 ({sec_scored['grade']})")
+        print(f"[Security] {sec_scored['total_observations']} observations — {sec_scored['by_severity']}")
+    except Exception as e:
+        print(f"[Security] Security audit failed: {e}")
+        import traceback; traceback.print_exc()
+    step_elapsed = time.time() - step_start
+    print(f"  >> Step 9 done in {step_elapsed:.1f}s\n")
+
+    # Step 10: Recompute overall
     from analyzers.scoring import compute_overall_score
     overall = compute_overall_score(
         results["ui"]["score"],
@@ -176,8 +197,9 @@ def main():
         mobile_score=mobile_score,
         missing_features_score=missing_features_score,
         cta_score=cta_score,
+        security_score=security_score,
     )
-    db.update_scan(scan_id, overall_score=overall["overall_score"], mobile_score=mobile_score, missing_features_score=missing_features_score, cta_score=cta_score)
+    db.update_scan(scan_id, overall_score=overall["overall_score"], mobile_score=mobile_score, missing_features_score=missing_features_score, cta_score=cta_score, security_score=security_score)
 
     # Final summary
     total_elapsed = time.time() - total_start
@@ -188,13 +210,14 @@ def main():
     print(f"  Status: {scan['status']}")
     print(f"  Pages crawled: {scan['pages_crawled']}")
     print(f"  ---")
-    print(f"  UI Score:       {results['ui']['score']}/100 ({results['ui']['grade']})")
-    print(f"  UX Score:       {results['ux']['score']}/100 ({results['ux']['grade']})")
-    print(f"  SEO Score:      {results['seo']['score']}/100 ({results['seo']['grade']})")
-    print(f"  Mobile Score:   {mobile_score}/100")
-    print(f"  Features Score: {missing_features_score}/100")
-    print(f"  CTA Score:      {cta_score}/100")
-    print(f"  Overall Score:  {overall['overall_score']}/100 ({overall['grade']})")
+    print(f"  UI Score:        {results['ui']['score']}/100 ({results['ui']['grade']})")
+    print(f"  UX Score:        {results['ux']['score']}/100 ({results['ux']['grade']})")
+    print(f"  SEO Score:       {results['seo']['score']}/100 ({results['seo']['grade']})")
+    print(f"  Mobile Score:    {mobile_score}/100")
+    print(f"  Features Score:  {missing_features_score}/100")
+    print(f"  CTA Score:       {cta_score}/100")
+    print(f"  Security Score:  {security_score}/100")
+    print(f"  Overall Score:   {overall['overall_score']}/100 ({overall['grade']})")
     print(f"  ---")
     print(f"  Total time: {int(total_elapsed // 60)}m {int(total_elapsed % 60)}s")
     print(f"{'#'*60}\n")

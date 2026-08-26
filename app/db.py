@@ -42,7 +42,8 @@ def init_db():
             overall_score     INTEGER DEFAULT 0,
             mobile_score      INTEGER DEFAULT 0,
             missing_features_score INTEGER DEFAULT 0,
-            cta_score         INTEGER DEFAULT 0
+            cta_score         INTEGER DEFAULT 0,
+            security_score    INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS pages (
@@ -121,6 +122,10 @@ def init_db():
         pass
     try:
         conn.execute("ALTER TABLE scans ADD COLUMN cta_score INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        conn.execute("ALTER TABLE scans ADD COLUMN security_score INTEGER DEFAULT 0")
     except Exception:
         pass
     conn.commit()
@@ -455,6 +460,26 @@ def save_cta_findings(scan_id: int, cta_result: dict):
     conn.execute(
         "UPDATE scans SET cta_score = ? WHERE id = ?",
         (cta_result.get("cta_score", 0), scan_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_security_findings(scan_id: int, sec_result: dict):
+    """Save security audit findings to DB and update scan security_score."""
+    conn = get_conn()
+    now = datetime.now(timezone.utc).isoformat()
+
+    for f in sec_result.get("findings", []):
+        conn.execute(
+            "INSERT INTO findings (scan_id, page_id, category, check_name, severity, message, recommendation, created_at) "
+            "VALUES (?, NULL, 'security', ?, ?, ?, ?, ?)",
+            (scan_id, f["check"], f["severity"], f["message"], f.get("recommendation", ""), now),
+        )
+
+    conn.execute(
+        "UPDATE scans SET security_score = ? WHERE id = ?",
+        (sec_result.get("security_score", 0), scan_id),
     )
     conn.commit()
     conn.close()
