@@ -15,6 +15,7 @@ import json
 import os
 import time
 from collections import deque
+from datetime import datetime, timezone
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
 from playwright.async_api import async_playwright, Page
@@ -39,9 +40,9 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 CRAWL_TIMEOUT = 600
 PAGE_GOTO_TIMEOUT = 10000
 DEFAULT_MAX_CONCURRENT = 5
-FAST_MODE_MAX_PAGES = 8
-FAST_MODE_CONCURRENCY = 6
-DEEP_MODE_CONCURRENCY = 8
+FAST_MODE_MAX_PAGES = 6
+FAST_MODE_CONCURRENCY = 8
+DEEP_MODE_CONCURRENCY = 10
 
 
 # ─── URL Utilities ────────────────────────────────────────
@@ -399,7 +400,7 @@ async def crawl_site(scan_id: int):
     print(f"  Max pages: {effective_max_pages}")
     print(f"{'='*60}")
 
-    db.update_scan(scan_id, status="running", started_at=db.datetime.now(db.timezone.utc).isoformat())
+    db.update_scan(scan_id, status="running", started_at=datetime.now(timezone.utc).isoformat())
 
     site = db.get_conn().execute("SELECT * FROM sites WHERE id = ?", (scan["site_id"],)).fetchone()
     origin = site["origin"]
@@ -658,7 +659,7 @@ async def crawl_site(scan_id: int):
     db.update_scan(
         scan_id,
         status="completed",
-        finished_at=db.datetime.now(db.timezone.utc).isoformat(),
+        finished_at=datetime.now(timezone.utc).isoformat(),
         pages_crawled=pages_crawled,
         elements_found=elements_found,
         interactions_run=0,

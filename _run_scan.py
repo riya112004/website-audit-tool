@@ -63,8 +63,10 @@ def main():
     try:
         from accessibility_checks import run_axe_on_pages, save_accessibility_to_db
         pages = db.get_pages(scan_id)
-        print(f"[A11y] Running axe-core on {min(5, len(pages))} pages...")
-        a11y_result = asyncio.run(run_axe_on_pages(pages, max_pages=5))
+        a11y_page_limit = 3 if scan_mode == "fast" else 5
+        pages_to_check = pages[:a11y_page_limit]
+        print(f"[A11y] Running axe-core on {len(pages_to_check)} pages...")
+        a11y_result = asyncio.run(run_axe_on_pages(pages_to_check, max_pages=a11y_page_limit))
         save_accessibility_to_db(scan_id, a11y_result)
         print(f"[A11y] Score: {a11y_result['score']}/100 — {len(a11y_result['issues'])} issue types")
     except Exception as e:
