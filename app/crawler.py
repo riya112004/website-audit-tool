@@ -38,7 +38,10 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 
 CRAWL_TIMEOUT = 600
 PAGE_GOTO_TIMEOUT = 10000
-MAX_CONCURRENT = 5
+DEFAULT_MAX_CONCURRENT = 5
+FAST_MODE_MAX_PAGES = 8
+FAST_MODE_CONCURRENCY = 6
+DEEP_MODE_CONCURRENCY = 8
 
 
 # ─── URL Utilities ────────────────────────────────────────
@@ -132,7 +135,7 @@ async def _extract_navbar_links(pg: Page) -> list[str]:
 
 async def _crawl_one_page(
     pg: Page, url: str, scan_id: int, site_id: int,
-    page_no: int, origin: str
+    page_no: int, origin: str, capture_screenshot: bool = True
 ) -> dict:
     """Crawl one page: load, extract data, save to DB. Returns result dict."""
     console_errors = []
@@ -179,13 +182,15 @@ async def _crawl_one_page(
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(raw_html)
 
-    screenshot_dir = os.path.join(html_dir, "screenshots")
-    os.makedirs(screenshot_dir, exist_ok=True)
-    screenshot_path = os.path.join(screenshot_dir, f"page_{page_no}.png")
-    try:
-        await pg.screenshot(path=screenshot_path, full_page=False)
-    except Exception:
-        screenshot_path = None
+    screenshot_path = None
+    if capture_screenshot:
+        screenshot_dir = os.path.join(html_dir, "screenshots")
+        os.makedirs(screenshot_dir, exist_ok=True)
+        screenshot_path = os.path.join(screenshot_dir, f"page_{page_no}.png")
+        try:
+            await pg.screenshot(path=screenshot_path, full_page=False)
+        except Exception:
+            screenshot_path = None
 
     page_obj = db.insert_page(
         scan_id=scan_id, site_id=site_id,
@@ -373,17 +378,32 @@ async def crawl_site(scan_id: int):
     if not scan:
         return
 
+    scan_mode = (scan.get("scan_mode") or "fast").lower()
+    if scan_mode not in {"fast", "deep"}:
+        scan_mode = "fast"
+
+    effective_max_pages = scan["max_pages"]
+    if scan_mode == "fast":
+        effective_max_pages = min(scan["max_pages"], FAST_MODE_MAX_PAGES)
+        effective_concurrency = FAST_MODE_CONCURRENCY
+        capture_screenshot = False
+        print(f"[Crawler] FAST mode enabled — limiting crawl to {effective_max_pages} pages and reducing heavy checks")
+    else:
+        effective_concurrency = DEEP_MODE_CONCURRENCY
+        capture_screenshot = True
+
     print(f"{'='*60}")
     print(f"  CRAWLER STARTED — Scan #{scan_id}")
     print(f"  URL: {scan['start_url']}")
-    print(f"  Max pages: {scan['max_pages']}")
+    print(f"  Mode: {scan_mode}")
+    print(f"  Max pages: {effective_max_pages}")
     print(f"{'='*60}")
 
     db.update_scan(scan_id, status="running", started_at=db.datetime.now(db.timezone.utc).isoformat())
 
     site = db.get_conn().execute("SELECT * FROM sites WHERE id = ?", (scan["site_id"],)).fetchone()
     origin = site["origin"]
-    max_pages = scan["max_pages"]
+    max_pages = effective_max_pages
 
     # ─── Shared state (reference pattern) ──────────────────
     visited: set[str] = set()
@@ -393,7 +413,7 @@ async def crawl_site(scan_id: int):
     all_links: set[str] = set()
 
     queue: deque[tuple[str, str]] = deque()
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+    semaphore = asyncio.Semaphore(effective_concurrency)
 
     pages_crawled = 0
     pages_attempted = 0
@@ -431,7 +451,7 @@ async def crawl_site(scan_id: int):
             pg = await ctx.new_page()
             try:
                 async with semaphore:
-                    return await _crawl_one_page(pg, url, scan_id, scan["site_id"], page_no, origin)
+                    return await _crawl_one_page(pg, url, scan_id, scan["site_id"], page_no, origin, capture_screenshot=capture_screenshot)
             finally:
                 try:
                     await pg.close()
@@ -449,7 +469,7 @@ async def crawl_site(scan_id: int):
 
             # Collect a batch of URLs to crawl concurrently
             batch = []
-            while queue and len(batch) < MAX_CONCURRENT and pages_crawled + len(batch) < max_pages:
+            while queue and len(batch) < effective_concurrency and pages_crawled + len(batch) < max_pages:
                 url, source = queue.popleft()
                 url_norm = normalize_url(url)
 

@@ -28,6 +28,7 @@ def init_db():
             site_id           INTEGER NOT NULL REFERENCES sites(id),
             start_url         TEXT NOT NULL,
             status            TEXT NOT NULL DEFAULT 'queued',
+            scan_mode         TEXT NOT NULL DEFAULT 'fast',
             max_pages         INTEGER NOT NULL DEFAULT 30,
             max_depth         INTEGER NOT NULL DEFAULT 3,
             started_at        TEXT,
@@ -113,6 +114,10 @@ def init_db():
     """)
     # migrations
     try:
+        conn.execute("ALTER TABLE scans ADD COLUMN scan_mode TEXT DEFAULT 'fast'")
+    except Exception:
+        pass
+    try:
         conn.execute("ALTER TABLE scans ADD COLUMN mobile_score INTEGER DEFAULT 0")
     except Exception:
         pass
@@ -150,11 +155,14 @@ def get_or_create_site(origin: str) -> dict:
 
 # ─── Scan ───────────────────────────────────────────────────
 
-def create_scan(site_id: int, start_url: str, max_pages: int = 30, max_depth: int = 3) -> dict:
+def create_scan(site_id: int, start_url: str, max_pages: int = 30, max_depth: int = 3, mode: str = "fast") -> dict:
     conn = get_conn()
+    mode_name = (mode or "fast").lower()
+    if mode_name not in {"fast", "deep"}:
+        mode_name = "fast"
     cur = conn.execute(
-        "INSERT INTO scans (site_id, start_url, max_pages, max_depth) VALUES (?, ?, ?, ?)",
-        (site_id, start_url, max_pages, max_depth),
+        "INSERT INTO scans (site_id, start_url, max_pages, max_depth, scan_mode) VALUES (?, ?, ?, ?, ?)",
+        (site_id, start_url, max_pages, max_depth, mode_name),
     )
     conn.commit()
     scan_id = cur.lastrowid

@@ -44,8 +44,19 @@ async def index(request: Request):
 async def start_scan(request: Request):
     form = await request.form()
     start_url = form.get("url", "").strip()
-    max_pages = int(form.get("max_pages", 30))
-    max_depth = int(form.get("max_depth", 3))
+    scan_mode = (form.get("scan_mode", "fast") or "fast").lower()
+    if scan_mode not in {"fast", "deep"}:
+        scan_mode = "fast"
+
+    if scan_mode == "fast":
+        default_pages = 8
+        default_depth = 2
+    else:
+        default_pages = 25
+        default_depth = 3
+
+    max_pages = int(form.get("max_pages", default_pages))
+    max_depth = int(form.get("max_depth", default_depth))
 
     if not start_url:
         raise HTTPException(400, "URL is required")
@@ -56,7 +67,7 @@ async def start_scan(request: Request):
     parsed = urlparse(start_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
     site = db.get_or_create_site(origin)
-    scan = db.create_scan(site["id"], start_url, max_pages, max_depth)
+    scan = db.create_scan(site["id"], start_url, max_pages, max_depth, mode=scan_mode)
 
     # Fire-and-forget subprocess — separate process for Playwright
     python = sys.executable

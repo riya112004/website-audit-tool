@@ -17,16 +17,28 @@
       <h2>New Website Scan</h2>
       <form method="POST" action="/scan" class="scan-form">
         <input type="url" name="url" placeholder="https://example.com" required autofocus />
+
+        <div class="form-row mode-row">
+          <label>
+            <input type="radio" name="scan_mode" value="fast" checked />
+            Fast mode
+          </label>
+          <label>
+            <input type="radio" name="scan_mode" value="deep" />
+            Deep mode
+          </label>
+        </div>
+
         <div class="form-row">
           <label>Max Pages
-            <input type="number" name="max_pages" value="50" min="1" max="200" />
+            <input type="number" name="max_pages" value="8" min="1" max="200" />
           </label>
           <label>Max Depth
-            <input type="number" name="max_depth" value="3" min="1" max="5" />
+            <input type="number" name="max_depth" value="2" min="1" max="5" />
           </label>
           <button type="submit">Start Scan</button>
         </div>
-        <p class="form-hint">Crawl completes in ~60 seconds. Sitemap.xml will be checked automatically.</p>
+        <p class="form-hint">Fast mode prioritizes quick audits. Deep mode does the full crawl and detailed analysis.</p>
       </form>
     </div>
 

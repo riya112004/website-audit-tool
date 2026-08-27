@@ -23,6 +23,10 @@ def main():
     db.init_db()
 
     total_start = time.time()
+    scan = db.get_scan(scan_id)
+    scan_mode = (scan.get("scan_mode") if scan else "fast").lower() if scan else "fast"
+    if scan_mode not in {"fast", "deep"}:
+        scan_mode = "fast"
 
     # Step 1: Crawl
     step_start = time.time()
@@ -78,9 +82,10 @@ def main():
         from mobile_responsiveness import run_mobile_checks
         from mobile_responsiveness.scoring import score_mobile_results
         pages = db.get_pages(scan_id)
-        pages_to_check = [p for p in pages if p.get("status_code") and 200 <= p["status_code"] < 400][:5]
-        print(f"[Mobile] Testing {len(pages_to_check)} pages × 5 breakpoints...")
-        raw_mobile = asyncio.run(run_mobile_checks(pages_to_check, max_pages=10))
+        mobile_page_limit = 3 if scan_mode == "fast" else 5
+        pages_to_check = [p for p in pages if p.get("status_code") and 200 <= p["status_code"] < 400][:mobile_page_limit]
+        print(f"[Mobile] Testing {len(pages_to_check)} pages...")
+        raw_mobile = asyncio.run(run_mobile_checks(pages_to_check, max_pages=mobile_page_limit))
         mobile_result = score_mobile_results(raw_mobile)
         db.save_mobile_findings(scan_id, mobile_result)
         mobile_score = mobile_result["mobile_score"]
