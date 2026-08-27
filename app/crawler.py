@@ -37,7 +37,7 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
                    ".svg", ".ico", ".css", ".js", ".xml", ".json", ".txt"}
 
 CRAWL_TIMEOUT = 600
-PAGE_GOTO_TIMEOUT = 25000
+PAGE_GOTO_TIMEOUT = 10000
 MAX_CONCURRENT = 5
 
 

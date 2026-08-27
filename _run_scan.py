@@ -27,7 +27,7 @@ def main():
     # Step 1: Crawl
     step_start = time.time()
     print(f"\n{'#'*60}")
-    print(f"  STEP 1/10: CRAWLING")
+    print(f"  STEP 1/8: CRAWLING")
     print(f"{'#'*60}")
     asyncio.run(crawl_site(scan_id))
     step_elapsed = time.time() - step_start
@@ -36,7 +36,7 @@ def main():
     # Step 2: SEO checks (populates findings in DB)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 2/10: SEO CHECKS")
+    print(f"  STEP 2/8: SEO CHECKS")
     print(f"{'#'*60}")
     run_seo_checks(scan_id)
     step_elapsed = time.time() - step_start
@@ -45,7 +45,7 @@ def main():
     # Step 3: All analyzers + ALL scores in one pipeline
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 3/10: UI/UX/SEO ANALYZERS + SCORING")
+    print(f"  STEP 3/8: UI/UX/SEO ANALYZERS + SCORING")
     print(f"{'#'*60}")
     results = run_analyzers(scan_id)
     step_elapsed = time.time() - step_start
@@ -54,7 +54,7 @@ def main():
     # Step 4: Accessibility checks (axe-core)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 4/10: ACCESSIBILITY (axe-core)")
+    print(f"  STEP 4/8: ACCESSIBILITY (axe-core)")
     print(f"{'#'*60}")
     try:
         from accessibility_checks import run_axe_on_pages, save_accessibility_to_db
@@ -71,14 +71,14 @@ def main():
     # Step 5: Mobile responsiveness
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 5/10: MOBILE RESPONSIVENESS")
+    print(f"  STEP 5/8: MOBILE RESPONSIVENESS")
     print(f"{'#'*60}")
     mobile_score = 0
     try:
         from mobile_responsiveness import run_mobile_checks
         from mobile_responsiveness.scoring import score_mobile_results
         pages = db.get_pages(scan_id)
-        pages_to_check = [p for p in pages if p.get("status_code") and 200 <= p["status_code"] < 400][:10]
+        pages_to_check = [p for p in pages if p.get("status_code") and 200 <= p["status_code"] < 400][:5]
         print(f"[Mobile] Testing {len(pages_to_check)} pages × 5 breakpoints...")
         raw_mobile = asyncio.run(run_mobile_checks(pages_to_check, max_pages=10))
         mobile_result = score_mobile_results(raw_mobile)
@@ -93,102 +93,84 @@ def main():
     step_elapsed = time.time() - step_start
     print(f"  >> Step 5 done in {step_elapsed:.1f}s\n")
 
-    # Step 6: Technology stack detection
+    # Steps 6-9: Run in PARALLEL (all CPU/DB, no browser)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 6/10: TECH STACK DETECTION")
+    print(f"  STEPS 6-9: TECH STACK + FEATURES + CTA + SECURITY (PARALLEL)")
     print(f"{'#'*60}")
-    try:
+
+    pages = db.get_pages(scan_id)
+    page_htmls = {}
+    for p in pages:
+        html_path = p.get("raw_html_path")
+        if html_path and os.path.exists(html_path):
+            with open(html_path, "r", encoding="utf-8") as f:
+                page_htmls[p["id"]] = f.read()
+
+    def _run_techstack():
         from techstack import detect_tech, save_tech_to_db
-        pages = db.get_pages(scan_id)
         tech_result = detect_tech(pages)
         save_tech_to_db(scan_id, tech_result)
         total_tech = sum(len(v) for v in tech_result.values())
         print(f"[TechStack] Detected {total_tech} technologies")
-    except Exception as e:
-        print(f"[TechStack] Detection failed: {e}")
-    step_elapsed = time.time() - step_start
-    print(f"  >> Step 6 done in {step_elapsed:.1f}s\n")
 
-    # Step 7: Missing features audit
-    step_start = time.time()
-    print(f"{'#'*60}")
-    print(f"  STEP 7/10: MISSING FEATURES AUDIT")
-    print(f"{'#'*60}")
-    missing_features_score = 0
-    try:
+    def _run_features():
         from missing_features import run_missing_features_checks
         from missing_features.scoring import score_features
-        pages = db.get_pages(scan_id)
-        page_htmls = {}
-        for p in pages:
-            html_path = p.get("raw_html_path")
-            if html_path and os.path.exists(html_path):
-                with open(html_path, "r", encoding="utf-8") as f:
-                    page_htmls[p["id"]] = f.read()
         mf_result = run_missing_features_checks(pages, page_htmls)
         mf_scored = score_features(mf_result)
         db.save_missing_features_findings(scan_id, mf_scored)
-        missing_features_score = mf_scored["missing_features_score"]
         print(f"[Features] Website type: {mf_scored['website_type']}")
-        print(f"[Features] Score: {missing_features_score}/100 ({mf_scored['grade']})")
-        print(f"[Features] {mf_scored['implemented']} implemented, {mf_scored['partial']} partial, {mf_scored['missing']} missing, {mf_scored['not_applicable']} N/A")
-    except Exception as e:
-        print(f"[Features] Missing features check failed: {e}")
-        import traceback; traceback.print_exc()
-    step_elapsed = time.time() - step_start
-    print(f"  >> Step 7 done in {step_elapsed:.1f}s\n")
+        print(f"[Features] Score: {mf_scored['missing_features_score']}/100 ({mf_scored['grade']})")
+        return mf_scored["missing_features_score"]
 
-    # Step 8: CTA / Conversion Audit
-    step_start = time.time()
-    print(f"{'#'*60}")
-    print(f"  STEP 8/10: CTA / CONVERSION AUDIT")
-    print(f"{'#'*60}")
-    cta_score = 0
-    try:
+    def _run_cta():
         from cta_audit import run_cta_audit
         from cta_audit.scoring import score_cta_audit
-        pages = db.get_pages(scan_id)
-        page_htmls = {}
-        for p in pages:
-            html_path = p.get("raw_html_path")
-            if html_path and os.path.exists(html_path):
-                with open(html_path, "r", encoding="utf-8") as f:
-                    page_htmls[p["id"]] = f.read()
         cta_result = run_cta_audit(pages, page_htmls)
         cta_scored = score_cta_audit(cta_result)
         db.save_cta_findings(scan_id, cta_scored)
-        cta_score = cta_scored["cta_score"]
-        print(f"[CTA] Score: {cta_score}/100 ({cta_scored['grade']})")
-        print(f"[CTA] {cta_scored['total_findings']} findings — {cta_scored['by_severity']}")
-    except Exception as e:
-        print(f"[CTA] CTA audit failed: {e}")
-        import traceback; traceback.print_exc()
-    step_elapsed = time.time() - step_start
-    print(f"  >> Step 8 done in {step_elapsed:.1f}s\n")
+        print(f"[CTA] Score: {cta_scored['cta_score']}/100 ({cta_scored['grade']})")
+        return cta_scored["cta_score"]
 
-    # Step 9: Security Observations
-    step_start = time.time()
-    print(f"{'#'*60}")
-    print(f"  STEP 9/10: SECURITY OBSERVATIONS")
-    print(f"{'#'*60}")
-    security_score = 0
-    try:
+    def _run_security():
         from security_audit import run_security_audit
         from security_audit.scoring import score_security_audit
         sec_result = run_security_audit(pages, page_htmls)
         sec_scored = score_security_audit(sec_result)
         db.save_security_findings(scan_id, sec_scored)
-        security_score = sec_scored["security_score"]
-        print(f"[Security] Score: {security_score}/100 ({sec_scored['grade']})")
-        print(f"[Security] {sec_scored['total_observations']} observations — {sec_scored['by_severity']}")
-    except Exception as e:
-        print(f"[Security] Security audit failed: {e}")
-        import traceback; traceback.print_exc()
-    step_elapsed = time.time() - step_start
-    print(f"  >> Step 9 done in {step_elapsed:.1f}s\n")
+        print(f"[Security] Score: {sec_scored['security_score']}/100 ({sec_scored['grade']})")
+        return sec_scored["security_score"]
 
-    # Step 10: Recompute overall
+    import concurrent.futures
+    missing_features_score = 0
+    cta_score = 0
+    security_score = 0
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(_run_techstack): "techstack",
+            executor.submit(_run_features): "features",
+            executor.submit(_run_cta): "cta",
+            executor.submit(_run_security): "security",
+        }
+        for future in concurrent.futures.as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result()
+                if name == "features":
+                    missing_features_score = result
+                elif name == "cta":
+                    cta_score = result
+                elif name == "security":
+                    security_score = result
+            except Exception as e:
+                print(f"[Parallel] {name} failed: {e}")
+
+    step_elapsed = time.time() - step_start
+    print(f"  >> Steps 6-9 done in {step_elapsed:.1f}s\n")
+
+    # Step 8: Recompute overall
     from analyzers.scoring import compute_overall_score
     overall = compute_overall_score(
         results["ui"]["score"],

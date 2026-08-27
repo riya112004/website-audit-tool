@@ -11,11 +11,22 @@ from seo.recommendations import RECOMMENDATIONS
 CATEGORY = "seo"
 
 
+_HTML_CACHE: dict[str, BeautifulSoup] = {}
+
+
 def _load_html(raw_html_path: str | None) -> BeautifulSoup | None:
     if not raw_html_path or not os.path.exists(raw_html_path):
         return None
+    if raw_html_path in _HTML_CACHE:
+        return _HTML_CACHE[raw_html_path]
     with open(raw_html_path, "r", encoding="utf-8") as f:
-        return BeautifulSoup(f.read(), "html.parser")
+        soup = BeautifulSoup(f.read(), "html.parser")
+    _HTML_CACHE[raw_html_path] = soup
+    return soup
+
+
+def clear_html_cache():
+    _HTML_CACHE.clear()
 
 
 def _add(scan_id, check_name, severity, message, page_id=None, recommendation=None):
@@ -1215,6 +1226,7 @@ def run_seo_checks(scan_id: int):
     print(f"[SEO] Complete — {len(findings)} total findings")
     print(f"{'='*60}\n")
 
+    clear_html_cache()
     return findings
 
 

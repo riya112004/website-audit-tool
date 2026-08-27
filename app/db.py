@@ -28,7 +28,7 @@ def init_db():
             site_id           INTEGER NOT NULL REFERENCES sites(id),
             start_url         TEXT NOT NULL,
             status            TEXT NOT NULL DEFAULT 'queued',
-            max_pages         INTEGER NOT NULL DEFAULT 50,
+            max_pages         INTEGER NOT NULL DEFAULT 30,
             max_depth         INTEGER NOT NULL DEFAULT 3,
             started_at        TEXT,
             finished_at       TEXT,
@@ -150,7 +150,7 @@ def get_or_create_site(origin: str) -> dict:
 
 # ─── Scan ───────────────────────────────────────────────────
 
-def create_scan(site_id: int, start_url: str, max_pages: int = 50, max_depth: int = 3) -> dict:
+def create_scan(site_id: int, start_url: str, max_pages: int = 30, max_depth: int = 3) -> dict:
     conn = get_conn()
     cur = conn.execute(
         "INSERT INTO scans (site_id, start_url, max_pages, max_depth) VALUES (?, ?, ?, ?)",

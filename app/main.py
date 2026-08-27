@@ -44,7 +44,7 @@ async def index(request: Request):
 async def start_scan(request: Request):
     form = await request.form()
     start_url = form.get("url", "").strip()
-    max_pages = int(form.get("max_pages", 50))
+    max_pages = int(form.get("max_pages", 30))
     max_depth = int(form.get("max_depth", 3))
 
     if not start_url:

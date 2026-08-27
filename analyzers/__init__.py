@@ -115,14 +115,7 @@ def run_analyzers(scan_id: int) -> dict:
     total_pages = len(pages)
     print(f"[Analyzers] Processing {total_pages} pages...")
 
-    # ── Step 1: Clear old findings (no stale data) ────────
-    _clear_old_findings(scan_id)
-
-    # ── Step 2: Re-run SEO checks (cleared with old findings) ──
-    from seo.seo_checker import run_seo_checks
-    run_seo_checks(scan_id)
-
-    # ── Step 3: Load context data ─────────────────────────
+    # ── Step 1: Load context data ─────────────────────────
     ux_data = _load_ux_data(scan_id)
     page_htmls = {}
     for p in pages:
@@ -189,8 +182,7 @@ def run_analyzers(scan_id: int) -> dict:
     _save_findings(scan_id, "ux", ux_findings)
     _save_findings(scan_id, "a11y", [])  # Already merged into ux
     _save_findings(scan_id, "vision", vision_findings)
-    # SEO: save ALL raw findings (info included) so report shows recommendations
-    _save_findings(scan_id, "seo", seo_findings_raw)
+    # SEO: already saved in Step 2, only score here
 
     # ── Step 7: SCORE — with N/A support ──────────────────
     print(f"[Analyzers] Computing scores...")
