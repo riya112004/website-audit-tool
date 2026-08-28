@@ -71,7 +71,10 @@ async def start_scan(request: Request):
 
     # Fire-and-forget subprocess — separate process for Playwright
     python = sys.executable
-    script = os.path.join(BASE_DIR, "_run_scan.py")
+    if scan_mode == "fast":
+        script = os.path.join(BASE_DIR, "_run_scan_fast.py")
+    else:
+        script = os.path.join(BASE_DIR, "_run_scan.py")
     log_dir = os.path.join(BASE_DIR, "data", "logs")
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"scan_{scan['id']}.log")

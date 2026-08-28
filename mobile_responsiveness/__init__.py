@@ -18,6 +18,7 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 
 
 BREAKPOINTS = [320, 375, 390, 414, 768]
+FAST_MODE_BREAKPOINTS = [390, 768]
 PAGE_GOTO_TIMEOUT = 25000
 
 
@@ -252,8 +253,8 @@ JS_VISUAL_QUALITY = """() => {
 
 # ── Main audit function ────────────────────────────────────────────────────
 
-async def run_mobile_checks(pages: list[dict], max_pages: int = 10) -> dict:
-    """Run mobile responsiveness checks on pages at 5 breakpoints.
+async def run_mobile_checks(pages: list[dict], max_pages: int = 10, fast_mode: bool = False) -> dict:
+    """Run mobile responsiveness checks on pages at a trimmed breakpoint set for fast mode.
 
     Returns dict: {
         page_url: {
@@ -264,24 +265,25 @@ async def run_mobile_checks(pages: list[dict], max_pages: int = 10) -> dict:
     }
     """
     pages_to_check = [p for p in pages if p.get("status_code") and 200 <= p["status_code"] < 400][:max_pages]
+    active_breakpoints = FAST_MODE_BREAKPOINTS if fast_mode else BREAKPOINTS
 
     if not pages_to_check:
         print("[Mobile] No valid pages to check")
         return {}
 
-    print(f"[Mobile] Launching browser for {len(pages_to_check)} pages × {len(BREAKPOINTS)} breakpoints...")
+    print(f"[Mobile] Launching browser for {len(pages_to_check)} pages × {len(active_breakpoints)} breakpoints (fast_mode={fast_mode})...")
     results = {}
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
-
-        for page in pages_to_check:
+        
+        # Process pages in parallel batches
+        async def check_page(page):
             url = page["url"]
             page_id = page["id"]
-            print(f"[Mobile] Checking: {url}")
-            results[url] = {"page_id": page_id}
-
-            for width in BREAKPOINTS:
+            page_results = {"page_id": page_id}
+            
+            for width in active_breakpoints:
                 try:
                     ctx = await browser.new_context(
                         viewport={"width": width, "height": 812},
@@ -354,18 +356,30 @@ async def run_mobile_checks(pages: list[dict], max_pages: int = 10) -> dict:
                         visual = await pg.evaluate(JS_VISUAL_QUALITY)
                         bp_results["visual_quality"] = visual
 
-                        results[url][width] = bp_results
+                        page_results[width] = bp_results
 
                     except Exception as e:
                         print(f"  [Mobile] Error at {width}px: {e}")
-                        results[url][width] = {"error": str(e)}
+                        page_results[width] = {"error": str(e)}
                     finally:
                         await pg.close()
                         await ctx.close()
                 except Exception as e:
                     print(f"  [Mobile] Context error at {width}px: {e}")
-                    results[url][width] = {"error": str(e)}
-
+                    page_results[width] = {"error": str(e)}
+            
+            return (url, page_results)
+        
+        # Run mobile checks for all pages in parallel
+        page_tasks = [check_page(p) for p in pages_to_check]
+        page_results_list = await asyncio.gather(*page_tasks, return_exceptions=True)
+        
+        for result in page_results_list:
+            if isinstance(result, Exception):
+                continue
+            url, page_res = result
+            results[url] = page_res
+        
         await browser.close()
 
     print(f"[Mobile] Checks complete for {len(results)} pages")

@@ -648,13 +648,13 @@ def aggregate_findings(findings: list[dict], total_pages: int,
 
 
 def _grade(score: int) -> str:
-    if score >= 80:
+    if score >= 85:
         return "Excellent"
-    if score >= 60:
+    if score >= 70:
         return "Good"
-    if score >= 40:
+    if score >= 55:
         return "Average"
-    if score >= 20:
+    if score >= 40:
         return "Needs Improvement"
     return "Poor"
 

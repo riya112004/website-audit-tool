@@ -39,6 +39,7 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 
 CRAWL_TIMEOUT = 600
 PAGE_GOTO_TIMEOUT = 10000
+FAST_MODE_PAGE_GOTO_TIMEOUT = 6000
 DEFAULT_MAX_CONCURRENT = 5
 FAST_MODE_MAX_PAGES = 6
 FAST_MODE_CONCURRENCY = 8
@@ -136,14 +137,15 @@ async def _extract_navbar_links(pg: Page) -> list[str]:
 
 async def _crawl_one_page(
     pg: Page, url: str, scan_id: int, site_id: int,
-    page_no: int, origin: str, capture_screenshot: bool = True
+    page_no: int, origin: str, capture_screenshot: bool = True,
+    fast_mode: bool = False, page_timeout: int = PAGE_GOTO_TIMEOUT
 ) -> dict:
     """Crawl one page: load, extract data, save to DB. Returns result dict."""
     console_errors = []
     pg.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
     try:
-        resp = await pg.goto(url, wait_until="domcontentloaded", timeout=PAGE_GOTO_TIMEOUT)
+        resp = await pg.goto(url, wait_until="domcontentloaded", timeout=page_timeout)
     except Exception as e:
         return {"error": f"[{url}] {e}"}
 
@@ -242,7 +244,21 @@ async def _crawl_one_page(
     for href in all_links:
         db.insert_edge(page_obj["id"], href, None)
 
-    return {
+    # Batch all DOM queries into ONE evaluate call to reduce browser round-trips
+    batch_results = await pg.evaluate("""() => ({
+        dom_size: document.querySelectorAll('*').length,
+        word_count: document.body ? document.body.innerText.split(/\\s+/).filter(w => w.length > 0).length : 0,
+        section_count: document.querySelectorAll('section, article, .section, [class*=section]').length,
+        form_count: document.querySelectorAll('form').length,
+        image_count: document.querySelectorAll('img').length,
+        heading_counts: { h1: document.querySelectorAll('h1').length, h2: document.querySelectorAll('h2').length, h3: document.querySelectorAll('h3').length, h4: document.querySelectorAll('h4').length, h5: document.querySelectorAll('h5').length, h6: document.querySelectorAll('h6').length },
+        button_count: document.querySelectorAll('button, [role=button], input[type=submit], input[type=button]').length,
+        meta_description: (() => { const m = document.querySelector('meta[name=description]'); return m ? m.content : ''; })(),
+        viewport_meta: !!document.querySelector('meta[name=viewport]'),
+        lang_attr: document.documentElement.lang || '',
+    })""")
+
+    result_dict = {
         "url": url,
         "page_obj": page_obj,
         "elements_count": len(nodes),
@@ -252,25 +268,26 @@ async def _crawl_one_page(
         "status_code": status_code,
         "error": None,
         "console_errors": console_errors,
-        "dom_size": await pg.evaluate("() => document.querySelectorAll('*').length"),
+        "dom_size": batch_results["dom_size"],
         "viewport": {"width": 1280, "height": 720},
         "screenshot_path": screenshot_path,
-        "word_count": await pg.evaluate("() => document.body ? document.body.innerText.split(/\\s+/).filter(w => w.length > 0).length : 0"),
-        "section_count": await pg.evaluate("() => document.querySelectorAll('section, article, .section, [class*=section]').length"),
-        "form_count": await pg.evaluate("() => document.querySelectorAll('form').length"),
-        "image_count": await pg.evaluate("() => document.querySelectorAll('img').length"),
-        "heading_counts": await pg.evaluate("() => ({ h1: document.querySelectorAll('h1').length, h2: document.querySelectorAll('h2').length, h3: document.querySelectorAll('h3').length, h4: document.querySelectorAll('h4').length, h5: document.querySelectorAll('h5').length, h6: document.querySelectorAll('h6').length })"),
-        "button_count": await pg.evaluate("() => document.querySelectorAll('button, [role=button], input[type=submit], input[type=button]').length"),
+        "word_count": batch_results["word_count"],
+        "section_count": batch_results["section_count"],
+        "form_count": batch_results["form_count"],
+        "image_count": batch_results["image_count"],
+        "heading_counts": batch_results["heading_counts"],
+        "button_count": batch_results["button_count"],
         "link_count": len(all_links),
-        "meta_description": await pg.evaluate("() => { const m = document.querySelector('meta[name=description]'); return m ? m.content : ''; }"),
-        "viewport_meta": await pg.evaluate("() => !!document.querySelector('meta[name=viewport]')"),
-        "lang_attr": await pg.evaluate("() => document.documentElement.lang || ''"),
+        "meta_description": batch_results["meta_description"],
+        "viewport_meta": batch_results["viewport_meta"],
+        "lang_attr": batch_results["lang_attr"],
         "core_web_vitals": cwv,
-        "rendered_styles": await pg.evaluate("""() => {
+    }
+
+    if not fast_mode:
+        result_dict["rendered_styles"] = await pg.evaluate("""() => {
             const cs = (el) => window.getComputedStyle(el);
             const px = (v) => parseFloat(v) || 0;
-
-            // Heading styles (limit 8)
             const headings = [];
             document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
                 if (headings.length >= 8) return;
@@ -289,8 +306,6 @@ async def _crawl_one_page(
                     visible: r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none',
                 });
             });
-
-            // Body text samples — use only <p> instead of p/li/td/span/a (avoids iterating thousands)
             const bodyTexts = [];
             document.querySelectorAll('p').forEach(el => {
                 if (bodyTexts.length >= 10) return;
@@ -305,8 +320,6 @@ async def _crawl_one_page(
                     color: s.color,
                 });
             });
-
-            // CTA elements (limit 4)
             const ctas = [];
             const ctaSelector = 'button, a.btn, a.button, [role=button], input[type=submit]';
             document.querySelectorAll(ctaSelector).forEach(el => {
@@ -326,8 +339,6 @@ async def _crawl_one_page(
                     height: Math.round(r.height),
                 });
             });
-
-            // Section spacing (limit 6)
             const sections = [];
             document.querySelectorAll('section, article, main').forEach(el => {
                 if (sections.length >= 6) return;
@@ -345,12 +356,9 @@ async def _crawl_one_page(
                     backgroundColor: s.backgroundColor,
                 });
             });
-
-            // Viewport info
             const body = document.body;
             const bodyStyle = body ? cs(body) : null;
             const bodyBg = bodyStyle ? bodyStyle.backgroundColor : 'rgb(255,255,255)';
-
             return {
                 headings: headings,
                 bodyTexts: bodyTexts,
@@ -359,8 +367,11 @@ async def _crawl_one_page(
                 bodyBackground: bodyBg,
                 viewportHeight: window.innerHeight,
             };
-        }"""),
-    }
+        }""")
+    else:
+        result_dict["rendered_styles"] = {}
+
+    return result_dict
 
 
 # ─── Main Crawl Orchestrator ─────────────────────────────
@@ -452,7 +463,13 @@ async def crawl_site(scan_id: int):
             pg = await ctx.new_page()
             try:
                 async with semaphore:
-                    return await _crawl_one_page(pg, url, scan_id, scan["site_id"], page_no, origin, capture_screenshot=capture_screenshot)
+                    page_timeout = FAST_MODE_PAGE_GOTO_TIMEOUT if scan_mode == "fast" else PAGE_GOTO_TIMEOUT
+                    return await _crawl_one_page(
+                        pg, url, scan_id, scan["site_id"], page_no, origin,
+                        capture_screenshot=capture_screenshot,
+                        fast_mode=(scan_mode == "fast"),
+                        page_timeout=page_timeout,
+                    )
             finally:
                 try:
                     await pg.close()
@@ -489,7 +506,7 @@ async def crawl_site(scan_id: int):
                 break
 
             urls_str = ", ".join(u.split("//")[-1][:30] for u, _ in batch)
-            print(f"[Crawler] Crawling batch ({len(batch)} pages): {urls_str}")
+            print(f"[Crawler] Batch ({len(batch)}/{effective_concurrency}): {urls_str}")
 
             # Crawl batch concurrently
             tasks = [_crawl_with_semaphore(url, pno) for url, pno in batch]

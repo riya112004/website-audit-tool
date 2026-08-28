@@ -1136,9 +1136,9 @@ def check_core_web_vitals(scan_id: int, pages: list[dict], ux_data: dict):
             _add(scan_id, "high_avg_cls", "warning",
                  f"Average CLS {avg_cls:.3f} across {len(cls_values)} pages (>0.15)")
 
-def run_seo_checks(scan_id: int):
+def run_seo_checks(scan_id: int, fast_mode: bool = False):
     print(f"\n{'='*60}")
-    print(f"  SEO CHECKS — Scan #{scan_id}")
+    print(f"  SEO CHECKS — Scan #{scan_id} (fast_mode={fast_mode})")
     print(f"{'='*60}")
 
     db.delete_findings(scan_id, CATEGORY)
@@ -1147,6 +1147,11 @@ def run_seo_checks(scan_id: int):
     if not pages:
         print(f"[SEO] No pages found — skipping")
         return
+
+    # In fast mode, only check first 3 pages
+    if fast_mode:
+        pages = pages[:3]
+        print(f"[SEO] Fast mode: limiting to {len(pages)} pages")
 
     scan = db.get_scan(scan_id)
     origin = ""

@@ -39,12 +39,17 @@ SEVERITY_PENALTY_PCT = {
 }
 
 GRADE_MAP = [
-    (80, "Excellent"),
-    (60, "Good"),
-    (40, "Average"),
-    (20, "Needs Improvement"),
+    (85, "Excellent"),
+    (70, "Good"),
+    (55, "Average"),
+    (40, "Needs Improvement"),
     (0,  "Poor"),
 ]
+
+# Calibration: keep the audit meaningful without letting accumulated heuristic issues
+# push a page into the red zone too quickly.
+PAGE_PENALTY_CALIBRATION = 0.55
+CATEGORY_CAP_FACTOR = 0.8
 
 
 def _grade(score: int) -> str:
@@ -391,12 +396,13 @@ def _score_page(page_data: dict) -> dict:
     category_scores = {}
     total_penalty = 0.0
     for cat, weight in CATEGORY_WEIGHTS.items():
-        pen = min(category_penalties[cat], weight)
+        pen = min(category_penalties[cat], weight * CATEGORY_CAP_FACTOR)
         cat_score = max(0, round(weight - pen))
         category_scores[cat] = cat_score
         total_penalty += pen
 
-    page_score = max(0, min(100, 100 - round(total_penalty)))
+    calibrated_penalty = round(total_penalty * PAGE_PENALTY_CALIBRATION)
+    page_score = max(0, min(100, 100 - calibrated_penalty))
 
     return {
         "score": page_score,
