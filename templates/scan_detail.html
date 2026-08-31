@@ -555,7 +555,7 @@
 
   </div>
 
-{% if scan.status in ["queued", "running", "completed"] %}
+{% if scan.status in ["queued", "running"] %}
   <script>
     let liveOpen = true;
     document.getElementById('live-section').style.display = 'block';
