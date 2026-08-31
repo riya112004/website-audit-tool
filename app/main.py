@@ -354,6 +354,11 @@ async def scan_detail(request: Request, scan_id: int):
     issue_count = sum(1 for _, finding in all_report_findings if finding.get("severity") != "info")
     critical_count = sum(1 for _, finding in all_report_findings if finding.get("severity") in {"critical", "high"})
 
+    report_ready = (
+        scan["status"] == "completed"
+        and bool(scan.get("finished_at"))
+    )
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
@@ -390,6 +395,7 @@ async def scan_detail(request: Request, scan_id: int):
         "priority_findings": priority_findings,
         "issue_count": issue_count,
         "critical_count": critical_count,
+        "report_ready": report_ready,
         "mf_findings": mf_findings,
         "mf_summary": mf_summary,
         "mf_grouped": mf_grouped,
@@ -441,6 +447,14 @@ async def api_scan_progress(scan_id: int):
         "status": scan["status"],
         "pages_crawled": scan["pages_crawled"] or 0,
         "elements_found": scan["elements_found"] or 0,
+        "overall_score": scan.get("overall_score") or 0,
+        "ui_score": scan.get("ui_score") or 0,
+        "ux_score": scan.get("ux_score") or 0,
+        "seo_score": scan.get("seo_score") or 0,
+        "mobile_score": scan.get("mobile_score") or 0,
+        "missing_features_score": scan.get("missing_features_score") or 0,
+        "cta_score": scan.get("cta_score") or 0,
+        "security_score": scan.get("security_score") or 0,
         "pages": page_list,
         "findings_count": len(findings),
         "seo_summary": seo_summary,

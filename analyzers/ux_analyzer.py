@@ -63,8 +63,8 @@ def _classify_page_intent(url: str, title: str = "") -> str:
 
 
 def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[dict],
-               all_elements: dict, ux_data: dict, origin: str) -> list[dict]:
-    """Run all UX checks. Returns list of finding dicts."""
+               all_elements: dict, ux_data: dict, origin: str, fast_mode: bool = False) -> list[dict]:
+    """Run UX checks, with a narrower set in fast mode."""
     findings = []
 
     if not pages:
@@ -78,9 +78,11 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
 
     _check_confusing_navigation(findings, scan_id, pages, page_htmls)
     _check_deep_nesting(findings, scan_id, pages)
-    _check_breadcrumb_missing(findings, scan_id, pages, page_htmls)
+    if not fast_mode:
+        _check_breadcrumb_missing(findings, scan_id, pages, page_htmls)
     _check_no_search_functionality(findings, scan_id, pages, page_htmls)
-    _check_unclear_information_architecture(findings, scan_id, pages, page_htmls)
+    if not fast_mode:
+        _check_unclear_information_architecture(findings, scan_id, pages, page_htmls)
 
     for p in pages:
         if p.get("status_code") and p["status_code"] >= 400:
@@ -96,20 +98,24 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
         _check_no_clear_value_proposition(findings, scan_id, p, soup, homepage)
 
         _check_weak_cta_hierarchy(findings, scan_id, p, soup)
-        _check_competing_ctas(findings, scan_id, p, soup)
-        _check_dead_end_pages(findings, scan_id, p, soup)
-        _check_confusing_user_flow(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_competing_ctas(findings, scan_id, p, soup)
+            _check_dead_end_pages(findings, scan_id, p, soup)
+            _check_confusing_user_flow(findings, scan_id, p, soup)
 
         _check_missing_hover_states(findings, scan_id, p, soup)
-        _check_no_loading_feedback(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_no_loading_feedback(findings, scan_id, p, soup)
         _check_missing_keyboard_navigation(findings, scan_id, p, soup)
-        _check_no_error_recovery(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_no_error_recovery(findings, scan_id, p, soup)
 
         _check_forms_without_labels(findings, scan_id, p, soup)
         _check_excessive_form_fields(findings, scan_id, p, soup)
         _check_no_form_validation(findings, scan_id, p, soup)
-        _check_confusing_form_layout(findings, scan_id, p, soup)
-        _check_missing_required_indicators(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_confusing_form_layout(findings, scan_id, p, soup)
+            _check_missing_required_indicators(findings, scan_id, p, soup)
 
         page_ux = ux_data.get(p["url"], {})
         _check_poor_mobile_responsive(findings, scan_id, p, soup)
@@ -123,10 +129,11 @@ def analyze_ux(scan_id: int, pages: list[dict], page_htmls: dict, edges: list[di
         _check_missing_focus_indicators(findings, scan_id, p, soup)
         _check_missing_skip_navigation(findings, scan_id, p, soup)
 
-    # DOM-diff broken interactions — runs Playwright once for all pages
-    print(f"[UX] Running broken interactions check (DOM-diff)...")
-    _check_broken_interactions(findings, scan_id, pages, page_htmls)
-    print(f"[UX] Broken interactions check complete")
+    if not fast_mode:
+        # DOM-diff broken interactions — runs Playwright once for all pages
+        print(f"[UX] Running broken interactions check (DOM-diff)...")
+        _check_broken_interactions(findings, scan_id, pages, page_htmls)
+        print(f"[UX] Broken interactions check complete")
 
     return findings
 

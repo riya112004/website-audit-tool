@@ -32,10 +32,10 @@ def main():
     print(f"  FAST SCAN #{scan_id}")
     print(f"{'#'*60}\n")
 
-    # ─── STEP 1: CRAWL (6 pages max, high concurrency, batched DOM queries)
+    # ─── STEP 1: CRAWL (5 pages max, lower concurrency for speed)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 1/5: CRAWL (6 pages max, high concurrency)")
+    print(f"  STEP 1/5: CRAWL (5 pages max, 4 workers)")
     print(f"{'#'*60}")
     asyncio.run(crawl_site(scan_id))
     step_elapsed = time.time() - step_start
@@ -60,14 +60,14 @@ def main():
     print(f"{'#'*60}")
     print(f"  STEP 3/5: UI/UX/SEO ANALYZERS + SCORING")
     print(f"{'#'*60}")
-    results = run_analyzers(scan_id)
+    results = run_analyzers(scan_id, fast_mode=True)
     step_elapsed = time.time() - step_start
     print(f"  >> Step 3 done in {step_elapsed:.1f}s\n")
 
-    # ─── STEP 4: MOBILE (1 page, 2 breakpoints only)
+    # ─── STEP 4: MOBILE (1 page, single fast breakpoint)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 4/5: MOBILE (1 page, 2 breakpoints)")
+    print(f"  STEP 4/5: MOBILE (1 page, 390px only)")
     print(f"{'#'*60}")
     mobile_score = 0
     try:
@@ -96,8 +96,9 @@ def main():
     print(f"{'#'*60}")
 
     pages = db.get_pages(scan_id)
+    light_pages = pages[:1]
     page_htmls = {}
-    for p in pages:
+    for p in light_pages:
         html_path = p.get("raw_html_path")
         if html_path and os.path.exists(html_path):
             with open(html_path, "r", encoding="utf-8") as f:
@@ -113,7 +114,7 @@ def main():
     def _run_features():
         from missing_features import run_missing_features_checks
         from missing_features.scoring import score_features
-        mf_result = run_missing_features_checks(pages, page_htmls)
+        mf_result = run_missing_features_checks(light_pages, page_htmls)
         mf_scored = score_features(mf_result)
         db.save_missing_features_findings(scan_id, mf_scored)
         print(f"[Features] Score: {mf_scored['missing_features_score']}/100")
@@ -122,7 +123,7 @@ def main():
     def _run_cta():
         from cta_audit import run_cta_audit
         from cta_audit.scoring import score_cta_audit
-        cta_result = run_cta_audit(pages, page_htmls)
+        cta_result = run_cta_audit(light_pages, page_htmls)
         cta_scored = score_cta_audit(cta_result)
         db.save_cta_findings(scan_id, cta_scored)
         print(f"[CTA] Score: {cta_scored['cta_score']}/100")
@@ -131,7 +132,7 @@ def main():
     def _run_security():
         from security_audit import run_security_audit
         from security_audit.scoring import score_security_audit
-        sec_result = run_security_audit(pages, page_htmls)
+        sec_result = run_security_audit(light_pages, page_htmls)
         sec_scored = score_security_audit(sec_result)
         db.save_security_findings(scan_id, sec_scored)
         print(f"[Security] Score: {sec_scored['security_score']}/100")
@@ -142,7 +143,7 @@ def main():
     cta_score = 0
     security_score = 0
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
             executor.submit(_run_techstack): "techstack",
             executor.submit(_run_features): "features",
@@ -178,6 +179,8 @@ def main():
     )
     db.update_scan(
         scan_id,
+        status="completed",
+        finished_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         overall_score=overall_score["overall_score"],
         ui_score=results["ui"]["score"],
         ux_score=results["ux"]["score"],

@@ -3,8 +3,8 @@ from bs4 import BeautifulSoup
 
 
 def analyze_accessibility(scan_id: int, pages: list[dict], page_htmls: dict,
-                          all_elements: dict) -> list[dict]:
-    """Run accessibility checks. Returns list of finding dicts."""
+                          all_elements: dict, fast_mode: bool = False) -> list[dict]:
+    """Run accessibility checks, with a reduced pass in fast mode."""
     findings = []
 
     if not pages:
@@ -26,7 +26,8 @@ def analyze_accessibility(scan_id: int, pages: list[dict], page_htmls: dict,
         _check_empty_headings(findings, scan_id, p, soup)
 
         _check_input_without_label(findings, scan_id, p, soup)
-        _check_form_without_fieldset(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_form_without_fieldset(findings, scan_id, p, soup)
         _check_missing_form_error_role(findings, scan_id, p, soup)
 
         _check_image_missing_alt(findings, scan_id, p, soup)
@@ -38,7 +39,8 @@ def analyze_accessibility(scan_id: int, pages: list[dict], page_htmls: dict,
         _check_missing_role_attributes(findings, scan_id, p, soup)
 
         _check_table_without_headers(findings, scan_id, p, soup)
-        _check_layout_table(findings, scan_id, p, soup)
+        if not fast_mode:
+            _check_layout_table(findings, scan_id, p, soup)
 
     return findings
 

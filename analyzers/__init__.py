@@ -87,8 +87,8 @@ def _process_findings(raw_findings: list[dict], total_pages: int,
     return aggregated
 
 
-def run_analyzers(scan_id: int) -> dict:
-    """Run all analyzers with the full scoring pipeline.
+def run_analyzers(scan_id: int, fast_mode: bool = False) -> dict:
+    """Run analyzers with a lighter fast-path when requested.
 
     Pipeline: Detection → Validate → Deduplicate → Enrich → Score
 
@@ -141,15 +141,15 @@ def run_analyzers(scan_id: int) -> dict:
 
     # ── Step 4: RAW DETECTION — run all analyzers ────────
     print(f"[Analyzers] Running UI analyzer...")
-    ui_findings_raw, ui_vh_data = analyze_ui(scan_id, pages, page_htmls, ux_data)
+    ui_findings_raw, ui_vh_data = analyze_ui(scan_id, pages, page_htmls, ux_data, fast_mode=fast_mode)
     print(f"[Analyzers] UI: {len(ui_findings_raw)} raw findings detected")
 
     print(f"[Analyzers] Running UX analyzer...")
-    ux_findings_raw = analyze_ux(scan_id, pages, page_htmls, edges, all_elements, ux_data, origin)
+    ux_findings_raw = analyze_ux(scan_id, pages, page_htmls, edges, all_elements, ux_data, origin, fast_mode=fast_mode)
     print(f"[Analyzers] UX: {len(ux_findings_raw)} raw findings detected")
 
     print(f"[Analyzers] Running accessibility analyzer...")
-    a11y_findings_raw = analyze_accessibility(scan_id, pages, page_htmls, all_elements)
+    a11y_findings_raw = analyze_accessibility(scan_id, pages, page_htmls, all_elements, fast_mode=fast_mode)
     print(f"[Analyzers] A11y: {len(a11y_findings_raw)} raw findings detected")
 
     print(f"[Analyzers] Running visual analyzer...")

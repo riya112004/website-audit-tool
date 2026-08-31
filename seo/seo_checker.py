@@ -1148,7 +1148,7 @@ def run_seo_checks(scan_id: int, fast_mode: bool = False):
         print(f"[SEO] No pages found — skipping")
         return
 
-    # In fast mode, only check first 3 pages
+    # In fast mode, keep a quick but useful sample
     if fast_mode:
         pages = pages[:3]
         print(f"[SEO] Fast mode: limiting to {len(pages)} pages")
@@ -1164,68 +1164,84 @@ def run_seo_checks(scan_id: int, fast_mode: bool = False):
 
     print(f"[SEO] Checking {len(pages)} pages...")
 
-    print(f"[SEO] Running crawl access checks...")
-    check_crawl_access(scan_id, pages)
+    if fast_mode:
+        print(f"[SEO] Fast mode: running core checks only...")
+        # Essential SEO checks for a quick but useful report
+        check_crawl_access(scan_id, pages)
+        check_titles(scan_id, pages)
+        check_meta_descriptions(scan_id, pages)
+        check_headings(scan_id, pages)
+        check_canonical(scan_id, pages)
+        check_viewport(scan_id, pages)
+        check_broken_links(scan_id, pages)
+        check_https(scan_id, pages)
+        check_indexability(scan_id, pages)
+    else:
+        print(f"[SEO] Running crawl access checks...")
+        check_crawl_access(scan_id, pages)
 
-    print(f"[SEO] Running title checks...")
-    check_titles(scan_id, pages)
+        print(f"[SEO] Running title checks...")
+        check_titles(scan_id, pages)
 
-    print(f"[SEO] Running meta description checks...")
-    check_meta_descriptions(scan_id, pages)
+        print(f"[SEO] Running meta description checks...")
+        check_meta_descriptions(scan_id, pages)
 
-    print(f"[SEO] Running heading checks...")
-    check_headings(scan_id, pages)
+        print(f"[SEO] Running heading checks...")
+        check_headings(scan_id, pages)
 
-    print(f"[SEO] Running image checks...")
-    check_images(scan_id, pages)
+        print(f"[SEO] Running image checks...")
+        check_images(scan_id, pages)
 
-    print(f"[SEO] Running canonical checks...")
-    check_canonical(scan_id, pages)
+        print(f"[SEO] Running canonical checks...")
+        check_canonical(scan_id, pages)
 
-    print(f"[SEO] Running structured data checks...")
-    check_structured_data(scan_id, pages)
+        print(f"[SEO] Running structured data checks...")
+        check_structured_data(scan_id, pages)
 
-    print(f"[SEO] Running viewport checks...")
-    check_viewport(scan_id, pages)
+        print(f"[SEO] Running viewport checks...")
+        check_viewport(scan_id, pages)
 
-    print(f"[SEO] Running link text checks...")
-    check_link_text(scan_id, pages)
+        print(f"[SEO] Running link text checks...")
+        check_link_text(scan_id, pages)
 
-    print(f"[SEO] Running broken link checks...")
-    check_broken_links(scan_id, pages)
+        print(f"[SEO] Running broken link checks...")
+        check_broken_links(scan_id, pages)
 
-    print(f"[SEO] Running duplicate content detection...")
-    check_duplicate_content(scan_id, pages)
+        if not fast_mode:
+            print(f"[SEO] Running duplicate content detection...")
+            check_duplicate_content(scan_id, pages)
 
-    print(f"[SEO] Running internal linking analysis...")
-    check_internal_linking(scan_id, pages, edges)
+        print(f"[SEO] Running internal linking analysis...")
+        check_internal_linking(scan_id, pages, edges)
 
-    # Core Web Vitals (needs ux_data)
-    import json as _json
-    import os as _os
-    print(f"[SEO] Running Core Web Vitals analysis...")
-    ux_dir = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "html", f"scan{scan_id}")
-    ux_file = _os.path.join(ux_dir, "ux_data.json")
-    ux_data = {}
-    if _os.path.exists(ux_file):
-        try:
-            with open(ux_file, "r", encoding="utf-8") as f:
-                ux_data = _json.load(f)
-        except Exception:
-            pass
-    check_core_web_vitals(scan_id, pages, ux_data)
+        # Core Web Vitals (needs ux_data)
+        import json as _json
+        import os as _os
+        print(f"[SEO] Running Core Web Vitals analysis...")
+        ux_dir = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "data", "html", f"scan{scan_id}")
+        ux_file = _os.path.join(ux_dir, "ux_data.json")
+        ux_data = {}
+        if _os.path.exists(ux_file):
+            try:
+                with open(ux_file, "r", encoding="utf-8") as f:
+                    ux_data = _json.load(f)
+            except Exception:
+                pass
+        check_core_web_vitals(scan_id, pages, ux_data)
 
-    print(f"[SEO] Running HTTPS checks...")
-    check_https(scan_id, pages)
+        print(f"[SEO] Running HTTPS checks...")
+        check_https(scan_id, pages)
 
-    if origin:
-        print(f"[SEO] Running robots.txt & sitemap checks...")
-        check_robots_and_sitemap(scan_id, origin)
+        if origin:
+            print(f"[SEO] Running robots.txt & sitemap checks...")
+            check_robots_and_sitemap(scan_id, origin)
 
-    print(f"[SEO] Running content SEO analysis...")
-    check_content_seo(scan_id, pages)
-    check_indexability(scan_id, pages)
-    check_open_graph(scan_id, pages)
+        print(f"[SEO] Running content SEO analysis...")
+        if not fast_mode:
+            check_content_seo(scan_id, pages)
+        check_indexability(scan_id, pages)
+        if not fast_mode:
+            check_open_graph(scan_id, pages)
 
     findings = db.get_findings(scan_id, CATEGORY)
     print(f"[SEO] Complete — {len(findings)} total findings")

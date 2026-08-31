@@ -26,19 +26,22 @@
 
     <!-- STATUS BOX -->
     <div class="card status-card" id="overview">
+      {% if scan.status == "completed" or scan.status == "running" %}
       <div class="status-row">
         <div class="status-big">
           {% if scan.status == "completed" %}
           <span class="status-icon status-ok">&#10003;</span>
           {% elif scan.status == "running" %}
           <span class="status-icon status-run">&#9657;</span>
-          {% else %}
-          <span class="status-icon status-err">&#10007;</span>
           {% endif %}
-          <span class="status-label">{{ scan.status|upper }}</span>
         </div>
         <div class="status-url">{{ scan.start_url }}</div>
       </div>
+      {% else %}
+      <div class="status-row">
+        <div class="status-url">{{ scan.start_url }}</div>
+      </div>
+      {% endif %}
       <div class="stats-grid">
         <div class="stat">
           <div class="stat-num" id="stat-pages">{{ scan.pages_crawled or 0 }}</div>
@@ -116,7 +119,17 @@
     </div>
     {% endif %}
 
-    {% if scan.status == "completed" %}
+    {% if scan.status == "completed" and not report_ready %}
+    <div class="card live-card">
+      <div class="live-header">
+        <h2>Generating audit report…</h2>
+      </div>
+      <div class="live-spinner">
+        <span class="spinner"></span>
+        <span>Finalizing scores and findings…</span>
+      </div>
+    </div>
+    {% elif scan.status == "completed" %}
     <section class="overview-grid" aria-label="Audit summary">
       <div class="card health-summary">
         <div class="section-kicker">Plain-language summary</div>
@@ -160,7 +173,7 @@
     {% endif %}
 
     <!-- OVERALL SCORE (after completed) -->
-    {% if scan.status == "completed" and overall_score_data %}
+    {% if report_ready and overall_score_data %}
     <div class="card overall-score-card" id="scores">
       <h2>Overall Audit Score</h2>
       <div class="overall-score-row">
@@ -225,7 +238,7 @@
     {% endif %}
 
     <!-- UI FINDINGS -->
-    {% if ui_findings and scan.status == "completed" %}
+    {% if report_ready and ui_findings %}
     <div class="card ui-findings-card finding-section" id="findings">
       <div class="section-kicker">Technical details</div>
       <h2>Visual design findings ({{ ui_findings|length }})</h2>
@@ -542,7 +555,7 @@
 
   </div>
 
-  {% if scan.status in ["queued", "running"] %}
+{% if scan.status in ["queued", "running", "completed"] %}
   <script>
     let liveOpen = true;
     document.getElementById('live-section').style.display = 'block';
@@ -575,7 +588,12 @@
         } else {
           list.innerHTML = '<p class="empty">Starting crawl...</p>';
         }
-        if (data.status === 'completed' || data.status === 'failed') {
+        const scoresReady = data.overall_score > 0 || data.ui_score > 0 || data.ux_score > 0 || data.seo_score > 0 || data.mobile_score > 0 || data.missing_features_score > 0 || data.cta_score > 0 || data.security_score > 0 || data.findings_count > 0;
+        if (data.status === 'completed' && scoresReady) {
+          setTimeout(function() { location.reload(); }, 500);
+          return;
+        }
+        if (data.status === 'failed') {
           setTimeout(function() { location.reload(); }, 500);
           return;
         }

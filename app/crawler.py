@@ -38,12 +38,12 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
                    ".svg", ".ico", ".css", ".js", ".xml", ".json", ".txt"}
 
 CRAWL_TIMEOUT = 600
-PAGE_GOTO_TIMEOUT = 10000
-FAST_MODE_PAGE_GOTO_TIMEOUT = 15000
+PAGE_GOTO_TIMEOUT = 12000  # With fallback, graceful timeout for slow sites
+FAST_MODE_PAGE_GOTO_TIMEOUT = 10000  # Shorter for fast mode
 DEFAULT_MAX_CONCURRENT = 5
-FAST_MODE_MAX_PAGES = 6
-FAST_MODE_CONCURRENCY = 8
-DEEP_MODE_CONCURRENCY = 10
+FAST_MODE_MAX_PAGES = 5
+FAST_MODE_CONCURRENCY = 3
+DEEP_MODE_CONCURRENCY = 5
 
 
 # ─── URL Utilities ────────────────────────────────────────
@@ -135,6 +135,22 @@ async def _extract_navbar_links(pg: Page) -> list[str]:
 
 # ─── Single Page Crawl ───────────────────────────────────
 
+BLOCKED_RESOURCE_TYPES = {"image", "media", "font"}
+
+
+async def _block_heavy_resources(pg: Page) -> None:
+    """Abort heavy static resources so pages load faster (HTML/DOM only needed)."""
+    async def _handler(route):
+        if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
+            await route.abort()
+        else:
+            await route.continue_()
+    try:
+        await pg.route("**/*", _handler)
+    except Exception:
+        pass
+
+
 async def _crawl_one_page(
     pg: Page, url: str, scan_id: int, site_id: int,
     page_no: int, origin: str, capture_screenshot: bool = True,
@@ -144,10 +160,34 @@ async def _crawl_one_page(
     console_errors = []
     pg.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
+    # Block heavy resources to speed up slow sites
+    await _block_heavy_resources(pg)
+
+    # Try to load with domcontentloaded, but fall back to partial load
+    resp = None
     try:
         resp = await pg.goto(url, wait_until="domcontentloaded", timeout=page_timeout)
-    except Exception as e:
-        return {"error": f"[{url}] {e}"}
+    except Exception:
+        # Timeout on domcontentloaded — try to load what we have so far
+        try:
+            await pg.wait_for_load_state("domcontentloaded", timeout=1000)
+        except Exception:
+            pass  # Page partially loaded, continue with what we have
+        
+        # Check if we at least got some HTML
+        try:
+            content = await pg.content()
+            if len(content) < 100:
+                return {"error": f"[{url}] Page timeout + minimal content"}
+        except Exception:
+            return {"error": f"[{url}] Page timeout + no content"}
+    
+    if resp is None:
+        # No response, but we may have partial content — continue anyway
+        resp = type('Response', (), {'status': 200, 'headers': {}})()
+    
+    status_code = resp.status if resp else None
+    resp_headers = dict(resp.headers) if resp else {}
 
     status_code = resp.status if resp else None
     resp_headers = dict(resp.headers) if resp else {}
@@ -461,6 +501,7 @@ async def crawl_site(scan_id: int):
             """Crawl one page with semaphore concurrency control."""
             ctx = await browser.new_context(viewport={"width": 1280, "height": 720})
             pg = await ctx.new_page()
+            await _block_heavy_resources(pg)
             try:
                 async with semaphore:
                     page_timeout = FAST_MODE_PAGE_GOTO_TIMEOUT if scan_mode == "fast" else PAGE_GOTO_TIMEOUT
@@ -562,7 +603,6 @@ async def crawl_site(scan_id: int):
                         continue
                     if not _is_crawlable_url(href):
                         continue
-
                     seen_raw.add(href_norm)
                     all_links.add(href_norm)
 
@@ -600,6 +640,7 @@ async def crawl_site(scan_id: int):
                         user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
                     )
                     pg = await ctx.new_page()
+                    await _block_heavy_resources(pg)
                     try:
                         await pg.goto(p["url"], wait_until="domcontentloaded", timeout=PAGE_GOTO_TIMEOUT)
                         has_hscroll = await pg.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth")

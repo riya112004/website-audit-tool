@@ -63,40 +63,53 @@ def _href(el: Tag) -> str:
 
 
 def _is_cta_element(el: Tag) -> bool:
-    """Check if element is likely a CTA (button or link with actionable text)."""
+    """Only count prominent action elements, not generic nav/footer links."""
     if el.name == "button":
         return True
-    if el.name == "a":
-        text = _text(el)
-        if not text:
-            return False
-        # Check if text matches CTA keywords
-        for kw in PRIMARY_CTA_KEYWORDS + SECONDARY_CTA_KEYWORDS:
-            if kw in text:
-                return True
-        # Check if it has a role="button"
-        if el.get("role") == "button":
+    if el.name == "input" and (el.get("type", "").lower() in {"submit", "button"}):
+        return True
+    if el.name != "a":
+        return False
+
+    text = _text(el)
+    if not text:
+        return False
+
+    # Exclude structural navigation/footer links first.
+    if _is_structural_link(el):
+        return False
+
+    classes = " ".join(el.get("class", []))
+    role = (el.get("role") or "").lower()
+    if role == "button" or re.search(r"\b(btn|button|cta|primary|hero|outline)\b", classes, re.I):
+        return True
+
+    text_norm = re.sub(r"[^a-z0-9\s-]", " ", text.lower())
+    if len(text_norm.split()) > 6:
+        return False
+
+    for kw in PRIMARY_CTA_KEYWORDS + SECONDARY_CTA_KEYWORDS:
+        if kw in text_norm:
             return True
-        # Check if styled like a button (class contains btn/button/cta)
-        cls = " ".join(el.get("class", []))
-        if re.search(r"btn|button|cta|call-to-action", cls, re.I):
-            return True
+
     return False
 
 
 def _is_structural_link(el: Tag) -> bool:
-    """Exclude ordinary navigation links from conversion analysis."""
+    """Exclude ordinary navigation/header/footer links from conversion analysis."""
     if el.name != "a":
         return False
+
     parent = el.parent
-    while parent and parent.name not in ("body", "html"):
-        if parent.name in ("nav", "footer"):
-            classes = " ".join(el.get("class", []))
-            return not (
-                el.get("role") == "button"
-                or re.search(r"cta|btn|button|primary", classes, re.I)
-            )
+    while parent and getattr(parent, "name", None) not in ("body", "html"):
+        name = (getattr(parent, "name", "") or "").lower()
+        classes = " ".join(parent.get("class", []) if isinstance(parent, Tag) else [])
+        pid = (parent.get("id") or "").lower()
+        combined = f"{name} {classes} {pid}".lower()
+        if name in {"nav", "footer", "header", "aside", "ul", "ol", "menu"} or re.search(r"nav|navbar|navigation|menu|footer|sidebar|header", combined):
+            return True
         parent = parent.parent
+
     return False
 
 

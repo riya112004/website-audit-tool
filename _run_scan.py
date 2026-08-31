@@ -36,7 +36,18 @@ def main():
     print(f"\n{'#'*60}")
     print(f"  STEP 1/8: CRAWLING")
     print(f"{'#'*60}")
-    asyncio.run(crawl_site(scan_id))
+    try:
+        asyncio.run(crawl_site(scan_id))
+    except Exception as exc:
+        error_message = f"Crawl failed: {exc}"
+        db.update_scan(
+            scan_id,
+            status="failed",
+            finished_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            error=error_message,
+        )
+        print(f"  [Crawler] {error_message}")
+        return
     step_elapsed = time.time() - step_start
     print(f"  >> Step 1 done in {step_elapsed:.1f}s\n")
 
@@ -196,7 +207,16 @@ def main():
         cta_score=cta_score,
         security_score=security_score,
     )
-    db.update_scan(scan_id, overall_score=overall["overall_score"], mobile_score=mobile_score, missing_features_score=missing_features_score, cta_score=cta_score, security_score=security_score)
+    db.update_scan(
+        scan_id,
+        status="completed",
+        finished_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        overall_score=overall["overall_score"],
+        mobile_score=mobile_score,
+        missing_features_score=missing_features_score,
+        cta_score=cta_score,
+        security_score=security_score,
+    )
 
     # ─────────────────────────────────────────────────────────────────────
     # FINAL SUMMARY

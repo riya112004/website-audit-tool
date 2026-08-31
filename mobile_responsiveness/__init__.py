@@ -18,7 +18,7 @@ from playwright.async_api import async_playwright, Page, BrowserContext
 
 
 BREAKPOINTS = [320, 375, 390, 414, 768]
-FAST_MODE_BREAKPOINTS = [390, 768]
+FAST_MODE_BREAKPOINTS = [390]
 PAGE_GOTO_TIMEOUT = 25000
 
 

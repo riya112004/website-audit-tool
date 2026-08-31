@@ -949,8 +949,9 @@ def analyze_ui(
     pages: list[dict],
     page_htmls: dict[str, BeautifulSoup],
     ux_data: dict,
+    fast_mode: bool = False,
 ) -> tuple[list[dict], dict]:
-    """Run all UI checks across all pages.
+    """Run UI checks across all pages, with reduced scope in fast mode.
 
     Args:
         scan_id: The scan identifier.
@@ -980,12 +981,14 @@ def analyze_ui(
         findings.extend(_check_typography(page, soup))
         findings.extend(_check_color_consistency(page, soup))
         findings.extend(_check_spacing_layout(page, soup))
-        findings.extend(_check_cta_design(page, soup))
+        if not fast_mode:
+            findings.extend(_check_cta_design(page, soup))
+            findings.extend(_check_overall_polish(page, soup))
         findings.extend(_check_imagery(page, soup))
-        findings.extend(_check_overall_polish(page, soup))
 
     # Cross-page checks
-    findings.extend(_check_component_consistency(pages, page_htmls))
+    if not fast_mode:
+        findings.extend(_check_component_consistency(pages, page_htmls))
 
     # Average visual hierarchy score across all pages
     avg_vh = round(sum(vh_scores) / len(vh_scores)) if vh_scores else 50

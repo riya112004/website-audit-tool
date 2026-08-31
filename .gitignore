@@ -1,9 +1,96 @@
+# Virtual Environment
 venv/
+env/
+ENV/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Test Files
+_test_*.py
+*_test.py
+test_*.py
+tests/__pycache__/
+tests/*.pyc
+test_output.html
+pytest_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Temporary & Debug Scripts
+_check.py
+_popen_*.py
+inspect_db.py
+
+# Data & Logs
 data/
+logs/
+*.log
 *.sqlite
+crawl_data.db
+
+# Markdown Files (temporary/test)
+test_*.md
+*_test.md
+*_temp.md
+temp_*.md
+draft_*.md
+
+# Backup & Temporary Files
+*.bak
+*.backup
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+
+# Environment
 .env
+.env.local
+.env.*.local
+.env.dist
+
+# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+.TemporaryItems
+.VolumeIcon.icns
+ehthumbs.db
+Desktop.ini
+
+# Misc
+*.cache
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ipynb_checkpoints
+.python-version

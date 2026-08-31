@@ -1,0 +1,45 @@
+[Unit]
+Description=Site Audit Crawler - FastAPI Web Application
+Documentation=file:///var/www/site-audit-crawler/DEPLOYMENT_GUIDE.md
+After=network.target
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/site-audit-crawler
+
+# Virtual environment & Python
+Environment="PATH=/var/www/site-audit-crawler/venv/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PORT=8000"
+
+# Start command
+ExecStart=/var/www/site-audit-crawler/venv/bin/gunicorn \
+    --workers 2 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --timeout 120 \
+    --access-logfile /var/log/site-crawler/access.log \
+    --error-logfile /var/log/site-crawler/error.log \
+    app.main:app
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Security & limits
+PrivateTmp=true
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=site-crawler
+
+# Resource limits (adjust based on your server)
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
