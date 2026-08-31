@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import db
 from app.crawler import crawl_site
+from seo.seo_checker import run_seo_checks
+from analyzers import run_analyzers
 
 def main():
     if len(sys.argv) < 2:
@@ -30,19 +32,42 @@ def main():
     print(f"  FAST SCAN #{scan_id}")
     print(f"{'#'*60}\n")
 
-    # ─── STEP 1: CRAWL (6 pages max, 12 concurrent, batched DOM queries)
+    # ─── STEP 1: CRAWL (6 pages max, high concurrency, batched DOM queries)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 1/3: CRAWL (4 pages max, high concurrency)")
+    print(f"  STEP 1/5: CRAWL (6 pages max, high concurrency)")
     print(f"{'#'*60}")
     asyncio.run(crawl_site(scan_id))
     step_elapsed = time.time() - step_start
     print(f"  >> Step 1 done in {step_elapsed:.1f}s\n")
 
-    # ─── STEP 2: MOBILE (1 page, 2 breakpoints only)
+    pages = db.get_pages(scan_id)
+    if not pages:
+        print("[Fast scan] No pages were crawled; audit stages skipped")
+        return
+
+    # ─── STEP 2: SEO CHECKS (first 3 pages in fast mode)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 2/3: MOBILE (1 page, 2 breakpoints)")
+    print(f"  STEP 2/5: SEO CHECKS (FAST)")
+    print(f"{'#'*60}")
+    run_seo_checks(scan_id, fast_mode=True)
+    step_elapsed = time.time() - step_start
+    print(f"  >> Step 2 done in {step_elapsed:.1f}s\n")
+
+    # ─── STEP 3: UI/UX/SEO ANALYZERS + SCORING
+    step_start = time.time()
+    print(f"{'#'*60}")
+    print(f"  STEP 3/5: UI/UX/SEO ANALYZERS + SCORING")
+    print(f"{'#'*60}")
+    results = run_analyzers(scan_id)
+    step_elapsed = time.time() - step_start
+    print(f"  >> Step 3 done in {step_elapsed:.1f}s\n")
+
+    # ─── STEP 4: MOBILE (1 page, 2 breakpoints only)
+    step_start = time.time()
+    print(f"{'#'*60}")
+    print(f"  STEP 4/5: MOBILE (1 page, 2 breakpoints)")
     print(f"{'#'*60}")
     mobile_score = 0
     try:
@@ -62,12 +87,12 @@ def main():
     except Exception as e:
         print(f"[Mobile] Check failed: {e}")
     step_elapsed = time.time() - step_start
-    print(f"  >> Step 2 done in {step_elapsed:.1f}s\n")
+    print(f"  >> Step 4 done in {step_elapsed:.1f}s\n")
 
-    # ─── STEP 3: LIGHTWEIGHT CHECKS (Tech + Features + CTA + Security in parallel)
+    # ─── STEP 5: LIGHTWEIGHT CHECKS (Tech + Features + CTA + Security in parallel)
     step_start = time.time()
     print(f"{'#'*60}")
-    print(f"  STEP 3/3: TECH/FEATURES/CTA/SECURITY (PARALLEL)")
+    print(f"  STEP 5/5: TECH/FEATURES/CTA/SECURITY (PARALLEL)")
     print(f"{'#'*60}")
 
     pages = db.get_pages(scan_id)
@@ -138,12 +163,14 @@ def main():
                 print(f"[{name.upper()}] Failed: {e}")
 
     step_elapsed = time.time() - step_start
-    print(f"  >> Step 3 done in {step_elapsed:.1f}s\n")
+    print(f"  >> Step 5 done in {step_elapsed:.1f}s\n")
 
     # ─── FINAL SCORE
     from analyzers.scoring import compute_overall_score
     overall_score = compute_overall_score(
-        0, 0, 0,  # UI, UX, SEO skipped in fast mode
+        results["ui"]["score"],
+        results["ux"]["score"],
+        results["seo"]["score"],
         mobile_score=mobile_score,
         missing_features_score=missing_features_score,
         cta_score=cta_score,
@@ -152,6 +179,9 @@ def main():
     db.update_scan(
         scan_id,
         overall_score=overall_score["overall_score"],
+        ui_score=results["ui"]["score"],
+        ux_score=results["ux"]["score"],
+        seo_score=results["seo"]["score"],
         mobile_score=mobile_score,
         missing_features_score=missing_features_score,
         cta_score=cta_score,
@@ -166,6 +196,9 @@ def main():
     print(f"  Status: {scan['status']}")
     print(f"  Pages crawled: {scan['pages_crawled']}")
     print(f"  ---")
+    print(f"  UI Score:         {results['ui']['score']}/100")
+    print(f"  UX Score:         {results['ux']['score']}/100")
+    print(f"  SEO Score:        {results['seo']['score']}/100")
     print(f"  Mobile Score:    {mobile_score}/100")
     print(f"  Features Score:  {missing_features_score}/100")
     print(f"  CTA Score:       {cta_score}/100")

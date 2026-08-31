@@ -84,6 +84,22 @@ def _is_cta_element(el: Tag) -> bool:
     return False
 
 
+def _is_structural_link(el: Tag) -> bool:
+    """Exclude ordinary navigation links from conversion analysis."""
+    if el.name != "a":
+        return False
+    parent = el.parent
+    while parent and parent.name not in ("body", "html"):
+        if parent.name in ("nav", "footer"):
+            classes = " ".join(el.get("class", []))
+            return not (
+                el.get("role") == "button"
+                or re.search(r"cta|btn|button|primary", classes, re.I)
+            )
+        parent = parent.parent
+    return False
+
+
 def _classify_cta(el: Tag) -> str:
     """Classify CTA as primary, secondary, or generic."""
     text = _text(el)
@@ -225,7 +241,7 @@ def _detect_ctas_on_page(soup: BeautifulSoup, page_url: str = "") -> list[dict]:
     for btn in soup.find_all("button"):
         candidates.append(btn)
     for a in soup.find_all("a", href=True):
-        if _is_cta_element(a):
+        if _is_cta_element(a) and not _is_structural_link(a):
             candidates.append(a)
 
     # Also find <input type="submit"> and <input type="button">
@@ -241,6 +257,10 @@ def _detect_ctas_on_page(soup: BeautifulSoup, page_url: str = "") -> list[dict]:
             if img:
                 text = (img.get("alt") or "").lower()
         if not text:
+            continue
+
+        # Calendar controls are navigation, not conversion opportunities.
+        if text in {"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"}:
             continue
 
         # Deduplicate same text on same page

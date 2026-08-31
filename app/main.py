@@ -227,12 +227,12 @@ async def scan_detail(request: Request, scan_id: int):
             a11y_grouped[name] = {"severity": f["severity"], "recommendation": f["recommendation"], "issues": []}
         a11y_grouped[name]["issues"].append(f)
 
-    from analyzers.scoring import compute_ui_score, compute_ux_score, compute_seo_score, _grade
-    ui_score_data = compute_ui_score(ui_findings)
-    all_ux = ux_findings + a11y_findings
-    ux_score_data = compute_ux_score(all_ux)
-    seo_score_data = compute_seo_score(seo_findings)
-    # Use DB scores as source of truth (computed by run_analyzers single pipeline)
+    from analyzers.scoring import _grade
+    # Scores are calculated once by the scan pipeline. Recomputing them here can
+    # disagree with the persisted values because the pipeline enriches findings.
+    ui_score_data = {"ui_score": scan["ui_score"] or 0, "grade": _grade(scan["ui_score"] or 0)}
+    ux_score_data = {"ux_score": scan["ux_score"] or 0, "grade": _grade(scan["ux_score"] or 0)}
+    seo_score_data = {"seo_score": scan["seo_score"] or 0, "grade": _grade(scan["seo_score"] or 0)}
     overall_score_data = {
         "overall_score": scan.get("overall_score", 0),
         "grade": _grade(scan.get("overall_score", 0)),
@@ -317,6 +317,43 @@ async def scan_detail(request: Request, scan_id: int):
         "grade": _grade(scan.get("security_score", 0)),
     }
 
+    # Build a short, plain-language action list for the report overview.
+    severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+    category_labels = {
+        "ui": "visual design", "ux": "visitor experience", "seo": "Google visibility",
+        "mobile": "mobile experience", "missing_features": "website completeness",
+        "cta": "conversions", "security": "security",
+    }
+    all_report_findings = [("ui", f) for f in ui_findings]
+    all_report_findings += [("ux", f) for f in ux_findings]
+    all_report_findings += [("seo", f) for f in seo_findings]
+    all_report_findings += [("mobile", f) for f in mobile_findings]
+    all_report_findings += [("missing_features", f) for f in mf_findings]
+    all_report_findings += [("cta", f) for f in cta_findings]
+    all_report_findings += [("security", f) for f in sec_findings]
+    priority_findings = []
+    seen_checks = set()
+    for category, finding in sorted(
+        all_report_findings,
+        key=lambda item: severity_rank.get(item[1].get("severity", "info"), 4),
+    ):
+        severity = finding.get("severity", "info")
+        check_name = finding.get("check_name", "")
+        if severity == "info" or check_name in seen_checks:
+            continue
+        seen_checks.add(check_name)
+        priority_findings.append({
+            "severity": severity,
+            "title": check_name.replace("_", " ").title(),
+            "area": category_labels.get(category, category.replace("_", " ")),
+            "recommendation": finding.get("recommendation") or "Review this issue and apply the recommended fix.",
+        })
+        if len(priority_findings) == 5:
+            break
+
+    issue_count = sum(1 for _, finding in all_report_findings if finding.get("severity") != "info")
+    critical_count = sum(1 for _, finding in all_report_findings if finding.get("severity") in {"critical", "high"})
+
     return templates.TemplateResponse(request, "scan_detail.html", {
         "scan": scan,
         "pages": pages,
@@ -350,6 +387,9 @@ async def scan_detail(request: Request, scan_id: int):
         "a11y_score_data": a11y_score_data,
         "tech_stack": tech_stack,
         "overall_score_data": overall_score_data,
+        "priority_findings": priority_findings,
+        "issue_count": issue_count,
+        "critical_count": critical_count,
         "mf_findings": mf_findings,
         "mf_summary": mf_summary,
         "mf_grouped": mf_grouped,

@@ -107,11 +107,14 @@ def score_features(result: dict) -> dict:
                 if sev in by_severity:
                     by_severity[sev] += 1
 
-        # Category score: proportion of earned vs applicable × weight
+        # Only applicable categories contribute to the weighted total. A
+        # category with no applicable features must not lower the site score.
         if cat_applicable > 0:
             cat_score = round((cat_earned / cat_applicable) * weight)
+            total_weighted_points += weight
+            earned_weighted_points += cat_score
         else:
-            cat_score = weight  # all features not applicable = full marks
+            cat_score = 0
 
         category_scores[cat_id] = {
             "score": cat_score,
@@ -121,9 +124,6 @@ def score_features(result: dict) -> dict:
             "missing": sum(1 for f in features if f["status"] == "missing"),
             "not_applicable": sum(1 for f in features if f["status"] == "not_applicable"),
         }
-
-        total_weighted_points += weight
-        earned_weighted_points += cat_score
 
     if total_weighted_points > 0:
         score = round((earned_weighted_points / total_weighted_points) * 100)

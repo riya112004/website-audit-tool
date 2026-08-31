@@ -11,9 +11,21 @@
     <h1><a href="/">Site Audit Crawler</a> / Scan #{{ scan.id }}</h1>
   </div>
   <div class="container">
+    <nav class="report-nav" aria-label="Report sections">
+      <a href="#overview">Overview</a>
+      {% if scan.status == "completed" and overall_score_data %}<a href="#scores">Scores</a>{% endif %}
+      {% if scan.status == "completed" %}<a href="#findings">Findings</a><a href="#pages">Pages</a>{% endif %}
+    </nav>
+    {% if scan.status == "completed" %}
+    <div class="report-mode" role="group" aria-label="Report view">
+      <span class="report-mode-label">Report view</span>
+      <button type="button" class="mode-button active" data-report-mode="simple">Simple summary</button>
+      <button type="button" class="mode-button" data-report-mode="technical">Technical details</button>
+    </div>
+    {% endif %}
 
     <!-- STATUS BOX -->
-    <div class="card status-card">
+    <div class="card status-card" id="overview">
       <div class="status-row">
         <div class="status-big">
           {% if scan.status == "completed" %}
@@ -74,7 +86,7 @@
     </div>
 
     <!-- LIVE PROGRESS (only during running) -->
-    {% if scan.status == "running" %}
+    {% if scan.status in ["queued", "running"] %}
     <div class="card live-card">
       <div class="live-header">
         <h2>Live Crawl Progress</h2>
@@ -104,9 +116,52 @@
     </div>
     {% endif %}
 
+    {% if scan.status == "completed" %}
+    <section class="overview-grid" aria-label="Audit summary">
+      <div class="card health-summary">
+        <div class="section-kicker">Plain-language summary</div>
+        <h2>What this means</h2>
+        {% if overall_score_data.overall_score >= 85 %}
+        <p>Your website is in strong shape overall. Focus on the priority items below to improve the remaining weak areas.</p>
+        {% elif overall_score_data.overall_score >= 70 %}
+        <p>Your website is working well, but a few improvements could make it easier to use, more visible in Google, and more effective for visitors.</p>
+        {% else %}
+        <p>Your website needs attention in several areas. Start with the high-priority actions below, then review the detailed evidence.</p>
+        {% endif %}
+        <div class="summary-stats">
+          <div><strong>{{ issue_count }}</strong><span>issues to review</span></div>
+          <div><strong>{{ critical_count }}</strong><span>high-priority issues</span></div>
+        </div>
+      </div>
+      <div class="card priority-card">
+        <div class="section-kicker">Start here</div>
+        <h2>Top actions</h2>
+        {% if priority_findings %}
+        <ol class="priority-list">
+          {% for finding in priority_findings %}
+          <li>
+            <span class="priority-number">{{ loop.index }}</span>
+            <div><strong>{{ finding.title }}</strong><span class="priority-area">{{ finding.area|title }} · {{ finding.severity|title }}</span><p>{{ finding.recommendation }}</p></div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <p class="empty">No issues need immediate attention.</p>
+        {% endif %}
+      </div>
+    </section>
+    <div class="card report-key">
+      <details>
+        <summary>How to read this report</summary>
+        <p><strong>High priority</strong> can affect accessibility, trust, visitors, or conversions. <strong>Medium</strong> should be planned next. <strong>Low</strong> is a polish item. <strong>Info</strong> is useful context and does not reduce the score.</p>
+        <p>The sections below contain technical evidence for developers. Terms such as LCP, CSP, canonical, and schema describe specific website settings; they are included so a developer can reproduce each recommendation.</p>
+      </details>
+    </div>
+    {% endif %}
+
     <!-- OVERALL SCORE (after completed) -->
     {% if scan.status == "completed" and overall_score_data %}
-    <div class="card overall-score-card">
+    <div class="card overall-score-card" id="scores">
       <h2>Overall Audit Score</h2>
       <div class="overall-score-row">
         <div class="overall-score-circle">
@@ -171,8 +226,9 @@
 
     <!-- UI FINDINGS -->
     {% if ui_findings and scan.status == "completed" %}
-    <div class="card ui-findings-card">
-      <h2>UI Audit Findings ({{ ui_findings|length }})</h2>
+    <div class="card ui-findings-card finding-section" id="findings">
+      <div class="section-kicker">Technical details</div>
+      <h2>Visual design findings ({{ ui_findings|length }})</h2>
       {% for check_name, group in ui_grouped.items() %}
       <details class="finding-row">
         <summary>
@@ -203,7 +259,7 @@
 
     <!-- UX FINDINGS -->
     {% if ux_findings and scan.status == "completed" %}
-    <div class="card ux-findings-card">
+    <div class="card ux-findings-card finding-section">
       <h2>UX Audit Findings ({{ ux_findings|length }})</h2>
       {% for check_name, group in ux_grouped.items() %}
       <details class="finding-row">
@@ -235,7 +291,7 @@
 
     <!-- ACCESSIBILITY FINDINGS (axe-core) -->
     {% if a11y_axe_findings and scan.status == "completed" %}
-    <div class="card a11y-findings-card">
+    <div class="card a11y-findings-card finding-section">
       <h2>Accessibility Findings — axe-core ({{ a11y_axe_findings|length }})</h2>
       {% for check_name, group in a11y_axe_grouped.items() %}
       <details class="finding-row">
@@ -267,7 +323,7 @@
 
     <!-- SEO FINDINGS (existing) -->
     {% if seo_findings and scan.status == "completed" %}
-    <div class="card">
+    <div class="card finding-section">
       <h2>SEO Audit Results</h2>
       {% for check_name, group in seo_grouped.items() %}
       {% set is_counted = check_name in ['heading_order_broken', 'non_descriptive_link_text'] %}
@@ -310,7 +366,7 @@
 
     <!-- MOBILE RESPONSIVENESS FINDINGS -->
     {% if mobile_findings and scan.status == "completed" %}
-    <div class="card mobile-findings-card">
+    <div class="card mobile-findings-card finding-section">
       <h2>Mobile Responsiveness Findings ({{ mobile_findings|length }})</h2>
       {% for check_name, group in mobile_grouped.items() %}
       <details class="finding-row">
@@ -342,7 +398,7 @@
 
     <!-- MISSING FEATURES FINDINGS -->
     {% if mf_findings and scan.status == "completed" %}
-    <div class="card mf-findings-card">
+    <div class="card mf-findings-card finding-section">
       <h2>Missing Features Findings ({{ mf_findings|length }})</h2>
       {% for check_name, group in mf_grouped.items() %}
       <details class="finding-row">
@@ -374,7 +430,7 @@
 
     <!-- CTA / CONVERSION FINDINGS -->
     {% if cta_findings and scan.status == "completed" %}
-    <div class="card cta-findings-card">
+    <div class="card cta-findings-card finding-section">
       <h2>CTA / Conversion Audit ({{ cta_findings|length }})</h2>
       {% for check_name, group in cta_grouped.items() %}
       <details class="finding-row">
@@ -406,7 +462,7 @@
 
     <!-- SECURITY OBSERVATIONS -->
     {% if sec_findings and scan.status == "completed" %}
-    <div class="card sec-findings-card">
+    <div class="card sec-findings-card finding-section">
       <h2>Security Observations ({{ sec_findings|length }})</h2>
       {% for check_name, group in sec_grouped.items() %}
       <details class="finding-row">
@@ -438,7 +494,7 @@
 
     <!-- TECH STACK -->
     {% if tech_stack and scan.status == "completed" %}
-    <div class="card tech-stack-card">
+    <div class="card tech-stack-card finding-section">
       <h2>Detected Tech Stack</h2>
       <div class="tech-grid">
         {% for category, items in tech_stack.items() if items %}
@@ -457,7 +513,7 @@
 
     <!-- CRAWLED PAGES -->
     {% if scan.status == "completed" %}
-    <div class="card">
+    <div class="card pages-section" id="pages">
       <h2>Crawled Pages ({{ pages|length }})</h2>
       {% if pages %}
       <table>
@@ -486,9 +542,11 @@
 
   </div>
 
-  {% if scan.status == "running" %}
+  {% if scan.status in ["queued", "running"] %}
   <script>
-    let liveOpen = false;
+    let liveOpen = true;
+    document.getElementById('live-section').style.display = 'block';
+    document.getElementById('btn-live').textContent = 'Hide Progress';
     function toggleLive() {
       const sec = document.getElementById('live-section');
       const btn = document.getElementById('btn-live');
@@ -522,10 +580,24 @@
           return;
         }
       } catch(e) {}
-      setTimeout(fetchProgress, 3000);
+      setTimeout(fetchProgress, 1500);
     }
+    fetchProgress();
   </script>
   {% endif %}
 
 </body>
+{% if scan.status == "completed" %}
+<script>
+  document.querySelectorAll('[data-report-mode]').forEach(function(button) {
+    button.addEventListener('click', function() {
+      const mode = button.dataset.reportMode;
+      document.body.classList.toggle('technical-mode', mode === 'technical');
+      document.querySelectorAll('[data-report-mode]').forEach(function(item) {
+        item.classList.toggle('active', item === button);
+      });
+    });
+  });
+</script>
+{% endif %}
 </html>

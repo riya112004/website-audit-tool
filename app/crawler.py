@@ -39,7 +39,7 @@ SKIP_EXTENSIONS = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 
 CRAWL_TIMEOUT = 600
 PAGE_GOTO_TIMEOUT = 10000
-FAST_MODE_PAGE_GOTO_TIMEOUT = 6000
+FAST_MODE_PAGE_GOTO_TIMEOUT = 15000
 DEFAULT_MAX_CONCURRENT = 5
 FAST_MODE_MAX_PAGES = 6
 FAST_MODE_CONCURRENCY = 8
@@ -673,17 +673,26 @@ async def crawl_site(scan_id: int):
         "time_taken": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
     }
 
+    crawl_status = "completed" if pages_crawled else "failed"
+    crawl_error = None
+    if not pages_crawled:
+        crawl_error = (
+            f"Unable to crawl any pages. {len(failed)} page(s) failed, "
+            "usually because the site timed out or blocked automated access."
+        )
+
     db.update_scan(
         scan_id,
-        status="completed",
+        status=crawl_status,
         finished_at=datetime.now(timezone.utc).isoformat(),
         pages_crawled=pages_crawled,
         elements_found=elements_found,
         interactions_run=0,
+        error=crawl_error,
     )
 
     print(f"\n{'='*60}")
-    print(f"  CRAWL COMPLETE — Scan #{scan_id}")
+    print(f"  CRAWL {crawl_status.upper()} — Scan #{scan_id}")
     print(f"  Pages crawled: {pages_crawled}/{max_pages}")
     print(f"  Pages failed: {len(failed)}")
     print(f"  Elements found: {elements_found}")
