@@ -558,6 +558,7 @@
 {% if scan.status in ["queued", "running"] %}
   <script>
     let liveOpen = true;
+    let polling = true;
     document.getElementById('live-section').style.display = 'block';
     document.getElementById('btn-live').textContent = 'Hide Progress';
     function toggleLive() {
@@ -569,9 +570,10 @@
       if (liveOpen) fetchProgress();
     }
     async function fetchProgress() {
-      if (!liveOpen) return;
+      if (!liveOpen || !polling) return;
       try {
         const resp = await fetch('/api/scan/{{ scan.id }}/progress');
+        if (!resp.ok) throw new Error('Progress request failed');
         const data = await resp.json();
         document.getElementById('live-pages').textContent = data.pages_crawled;
         document.getElementById('live-elements').textContent = data.elements_found;
@@ -588,17 +590,13 @@
         } else {
           list.innerHTML = '<p class="empty">Starting crawl...</p>';
         }
-        const scoresReady = data.overall_score > 0 || data.ui_score > 0 || data.ux_score > 0 || data.seo_score > 0 || data.mobile_score > 0 || data.missing_features_score > 0 || data.cta_score > 0 || data.security_score > 0 || data.findings_count > 0;
-        if (data.status === 'completed' && scoresReady) {
-          setTimeout(function() { location.reload(); }, 500);
-          return;
-        }
-        if (data.status === 'failed') {
-          setTimeout(function() { location.reload(); }, 500);
+        if (data.status === 'completed' || data.status === 'failed') {
+          polling = false;
+          setTimeout(function() { window.location.replace('/scans/{{ scan.id }}'); }, 300);
           return;
         }
       } catch(e) {}
-      setTimeout(fetchProgress, 1500);
+      if (polling) setTimeout(fetchProgress, 1500);
     }
     fetchProgress();
   </script>
