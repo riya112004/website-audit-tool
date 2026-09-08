@@ -555,6 +555,20 @@
 
   </div>
 
+  <script>
+    async function showFinalReport() {
+      const response = await fetch('/scans/{{ scan.id }}?updated=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'X-Requested-Report': 'final' }
+      });
+      if (!response.ok) throw new Error('Final report request failed');
+      const html = await response.text();
+      document.open();
+      document.write(html);
+      document.close();
+    }
+  </script>
+
 {% if scan.status in ["queued", "running"] %}
   <script>
     let liveOpen = true;
@@ -570,9 +584,11 @@
       if (liveOpen) fetchProgress();
     }
     async function fetchProgress() {
-      if (!liveOpen || !polling) return;
+      if (!polling) return;
       try {
-        const resp = await fetch('/api/scan/{{ scan.id }}/progress');
+        const resp = await fetch('/api/scan/{{ scan.id }}/progress?_=' + Date.now(), {
+          cache: 'no-store'
+        });
         if (!resp.ok) throw new Error('Progress request failed');
         const data = await resp.json();
         document.getElementById('live-pages').textContent = data.pages_crawled;
@@ -592,15 +608,44 @@
         }
         if (data.status === 'completed' || data.status === 'failed') {
           polling = false;
-          setTimeout(function() { window.location.replace('/scans/{{ scan.id }}'); }, 300);
+          await showFinalReport();
           return;
         }
-      } catch(e) {}
+      } catch(e) {
+        console.error('Unable to read scan progress:', e);
+        if (polling) setTimeout(fetchProgress, 1500);
+        return;
+      }
       if (polling) setTimeout(fetchProgress, 1500);
     }
     fetchProgress();
   </script>
   {% endif %}
+
+{% if scan.status == "completed" and not report_ready %}
+  <script>
+    let reportPolling = true;
+    async function waitForReport() {
+      if (!reportPolling) return;
+      try {
+        const resp = await fetch('/api/scan/{{ scan.id }}/progress?_=' + Date.now(), { cache: 'no-store' });
+        if (!resp.ok) throw new Error('Report status request failed');
+        const data = await resp.json();
+        if (data.report_ready || data.finished_at) {
+          reportPolling = false;
+          await showFinalReport();
+          return;
+        }
+      } catch (error) {
+        console.error('Unable to read report status:', error);
+        if (reportPolling) setTimeout(waitForReport, 1000);
+        return;
+      }
+      setTimeout(waitForReport, 1000);
+    }
+    waitForReport();
+  </script>
+{% endif %}
 
 </body>
 {% if scan.status == "completed" %}

@@ -445,6 +445,8 @@ async def api_scan_progress(scan_id: int):
         })
     return JSONResponse({
         "status": scan["status"],
+        "finished_at": scan.get("finished_at"),
+        "report_ready": scan["status"] == "completed" and bool(scan.get("finished_at")),
         "pages_crawled": scan["pages_crawled"] or 0,
         "elements_found": scan["elements_found"] or 0,
         "overall_score": scan.get("overall_score") or 0,
