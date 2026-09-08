@@ -714,7 +714,7 @@ async def crawl_site(scan_id: int):
         "time_taken": f"{int(elapsed // 60)}m {int(elapsed % 60)}s",
     }
 
-    crawl_status = "completed" if pages_crawled else "failed"
+    crawl_status = "running" if pages_crawled else "failed"
     crawl_error = None
     if not pages_crawled:
         crawl_error = (
@@ -725,7 +725,7 @@ async def crawl_site(scan_id: int):
     db.update_scan(
         scan_id,
         status=crawl_status,
-        finished_at=datetime.now(timezone.utc).isoformat(),
+        finished_at=datetime.now(timezone.utc).isoformat() if not pages_crawled else None,
         pages_crawled=pages_crawled,
         elements_found=elements_found,
         interactions_run=0,
